@@ -1,0 +1,13 @@
+{
+  "name": "iWarehouse Messenger",
+  "short_name": "iWM",
+  "description": "One secure workspace for every iWarehouse team.",
+  "start_url": "/chats",
+  "display": "standalone",
+  "background_color": "#131518",
+  "theme_color": "#181a1d",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

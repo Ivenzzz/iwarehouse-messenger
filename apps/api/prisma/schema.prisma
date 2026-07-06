@@ -1,0 +1,418 @@
+// iWarehouse Messenger — core data model
+// Phase 1 uses: User, UserProfile, Session, Department, Branch, AuditEvent, AppSetting.
+// Conversation/Message/Upload tables are created now so Phase 2–3 ship without
+// destructive migrations.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  MEMBER
+  READ_ONLY
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  LOCKED
+}
+
+enum Presence {
+  ONLINE
+  AWAY
+  BUSY
+  OFFLINE
+}
+
+enum ConversationType {
+  DIRECT
+  PRIVATE_GROUP
+  DEPARTMENT
+  BRANCH
+  ANNOUNCEMENT
+  PROJECT
+  INCIDENT
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  READ_ONLY
+}
+
+enum ContentType {
+  TEXT
+  SYSTEM
+  FILE
+  IMAGE
+  VIDEO
+  AUDIO
+  VOICE_NOTE
+}
+
+enum DeliveryStatus {
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  FAILED
+  SKIPPED
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+// ── Organization ────────────────────────────────────────────────────────────
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+
+  @@map("branches")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+
+  @@map("departments")
+}
+
+// ── Identity ────────────────────────────────────────────────────────────────
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  email              String     @unique
+  username           String     @unique
+  passwordHash       String
+  role               Role       @default(MEMBER)
+  status             UserStatus @default(ACTIVE)
+  branchId           String?    @db.Uuid
+  departmentId       String?    @db.Uuid
+  failedLoginCount   Int        @default(0)
+  lockedUntil        DateTime?
+  lastActiveAt       DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
+
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  profile      UserProfile?
+  sessions     Session[]
+  memberships  ConversationMember[]
+  messages     Message[]
+  reactions    MessageReaction[]
+  readReceipts ReadReceipt[]
+  saved        SavedMessage[]
+  pinned       PinnedMessage[]      @relation("PinnedBy")
+  uploads      Upload[]
+  notifications Notification[]
+  notificationPreference NotificationPreference?
+  auditEvents  AuditEvent[]         @relation("Actor")
+
+  @@index([branchId])
+  @@index([departmentId])
+  @@index([status])
+  @@index([lastActiveAt])
+  @@map("users")
+}
+
+model UserProfile {
+  userId       String    @id @db.Uuid
+  displayName  String
+  title        String?
+  phone        String?
+  avatarKey    String?
+  presence     Presence  @default(OFFLINE)
+  statusText   String?
+  statusExpiry DateTime?
+  showLastSeen Boolean   @default(true)
+  timezone     String    @default("Asia/Manila")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String
+  userAgent        String?
+  ip               String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ── Conversations & messages (Phase 2 ready) ───────────────────────────────
+
+model Conversation {
+  id          String           @id @default(uuid()) @db.Uuid
+  type        ConversationType
+  title       String?
+  description String?
+  avatarKey   String?
+  branchId    String?          @db.Uuid
+  departmentId String?         @db.Uuid
+  createdById String?          @db.Uuid
+  // Operational priority: P1 | P2 | P3 (null = none)
+  priority    String?
+  isArchived  Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  members  ConversationMember[]
+  messages Message[]
+  pinned   PinnedMessage[]
+
+  @@index([type])
+  @@index([branchId])
+  @@index([departmentId])
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+model ConversationMember {
+  conversationId String     @db.Uuid
+  userId         String     @db.Uuid
+  role           MemberRole @default(MEMBER)
+  joinedAt       DateTime   @default(now())
+  mutedUntil     DateTime?
+  pinnedAt       DateTime?
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id               String         @id @default(uuid()) @db.Uuid
+  conversationId   String         @db.Uuid
+  senderId         String?        @db.Uuid
+  content          String
+  contentType      ContentType    @default(TEXT)
+  replyToMessageId String?        @db.Uuid
+  deliveryStatus   DeliveryStatus @default(SENT)
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  editedAt         DateTime?
+  deletedAt        DateTime?
+
+  conversation Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User?             @relation(fields: [senderId], references: [id])
+  replyTo      Message?          @relation("Replies", fields: [replyToMessageId], references: [id])
+  replies      Message[]         @relation("Replies")
+  reactions    MessageReaction[]
+  attachments  MessageAttachment[]
+  readReceipts ReadReceipt[]
+  savedBy      SavedMessage[]
+  pins         PinnedMessage[]
+
+  // Cursor pagination: (conversationId, createdAt, id)
+  @@index([conversationId, createdAt(sort: Desc), id])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model MessageReaction {
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId, emoji])
+  @@map("message_reactions")
+}
+
+model MessageAttachment {
+  id           String     @id @default(uuid()) @db.Uuid
+  messageId    String     @db.Uuid
+  storageKey   String
+  originalName String
+  mimeType     String
+  sizeBytes    BigInt
+  sha256       String
+  thumbnailKey String?
+  width        Int?
+  height       Int?
+  durationMs   Int?
+  scanStatus   ScanStatus @default(PENDING)
+  uploadedBy   String?    @db.Uuid
+  createdAt    DateTime   @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([mimeType])
+  @@index([sha256])
+  @@map("message_attachments")
+}
+
+model ReadReceipt {
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  readAt    DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("read_receipts")
+}
+
+model SavedMessage {
+  userId    String   @db.Uuid
+  messageId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@id([userId, messageId])
+  @@map("saved_messages")
+}
+
+model PinnedMessage {
+  conversationId String   @db.Uuid
+  messageId      String   @db.Uuid
+  pinnedById     String?  @db.Uuid
+  pinnedAt       DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  message      Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedBy     User?        @relation("PinnedBy", fields: [pinnedById], references: [id])
+
+  @@id([conversationId, messageId])
+  @@map("pinned_messages")
+}
+
+// ── Uploads (Phase 3 ready) ─────────────────────────────────────────────────
+
+model Upload {
+  id           String     @id @default(uuid()) @db.Uuid
+  userId       String     @db.Uuid
+  storageKey   String     @unique
+  originalName String
+  mimeType     String
+  sizeBytes    BigInt
+  sha256       String?
+  status       String     @default("PENDING") // PENDING | COMPLETE | FAILED | CANCELED
+  scanStatus   ScanStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
+  completedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("uploads")
+}
+
+// ── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  kind      String
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  userId          String  @id @db.Uuid
+  browserEnabled  Boolean @default(true)
+  mentionsOnly    Boolean @default(false)
+  showPreview     Boolean @default(true)
+  quietHoursStart String? // "22:00"
+  quietHoursEnd   String? // "07:00"
+  sound           String  @default("default")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+// ── Platform ────────────────────────────────────────────────────────────────
+
+model AuditEvent {
+  id        String      @id @default(uuid()) @db.Uuid
+  actorId   String?     @db.Uuid
+  action    String
+  target    String?
+  ip        String?
+  userAgent String?
+  result    AuditResult @default(SUCCESS)
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  actor User? @relation("Actor", fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_events")
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}

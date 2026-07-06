@@ -1,0 +1,15 @@
+# Production overrides: HTTPS on 443 with Let's Encrypt certificates.
+# Usage on the server:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+services:
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+
+volumes:
+  certbot-www:
