@@ -12,7 +12,7 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   });
 
-  if (res.status === 401 && !retried && path !== '/auth/refresh') {
+  if (res.status === 401 && !retried && !path.startsWith('/auth/')) {
     const refreshed = await fetch('/api/auth/refresh', {
       method: 'POST',
       credentials: 'include',

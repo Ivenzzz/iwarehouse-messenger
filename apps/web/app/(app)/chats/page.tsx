@@ -45,7 +45,7 @@ function applyFilter(list: ConversationSummary[], filter: ListFilter) {
     case 'pinned':
       return list.filter((c) => c.pinnedAt);
     case 'assigned':
-      return []; // Tasks module lands in the next update.
+      return list.filter((c) => (c.myOpenTaskCount ?? 0) > 0);
     default:
       return list;
   }
@@ -146,7 +146,7 @@ function Chats() {
           {conversations && visible.length === 0 && (
             <li className="p-6 text-center text-sm text-faint">
               {filter === 'assigned'
-                ? 'Task assignments arrive in the next update — nothing to show yet.'
+                ? 'No conversations with tasks assigned to you.'
                 : filter === 'all'
                   ? 'No conversations yet. Start one with New.'
                   : 'Nothing matches this filter.'}

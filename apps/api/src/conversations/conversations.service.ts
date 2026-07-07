@@ -63,6 +63,23 @@ export class ConversationsService {
     ]);
     const branchCode = new Map(branches.map((b) => [b.id, b.code]));
     const deptCode = new Map(departments.map((d) => [d.id, d.code]));
+
+    const convIds = rows.map((c) => c.id);
+    const OPEN: any[] = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'BLOCKED', 'SUBMITTED'];
+    const [openTasks, myTasks] = await Promise.all([
+      this.prisma.task.groupBy({
+        by: ['conversationId'],
+        where: { conversationId: { in: convIds }, status: { in: OPEN } },
+        _count: { _all: true },
+      }),
+      this.prisma.task.groupBy({
+        by: ['conversationId'],
+        where: { conversationId: { in: convIds }, status: { in: OPEN }, assigneeId: userId },
+        _count: { _all: true },
+      }),
+    ]);
+    const openTaskCount = new Map(openTasks.map((g) => [g.conversationId, g._count._all]));
+    const myTaskCount = new Map(myTasks.map((g) => [g.conversationId, g._count._all]));
     const mentionConvos = new Set(
       unreadMentions
         .map((n) => (n.data as { conversationId?: string } | null)?.conversationId)
@@ -99,6 +116,8 @@ export class ConversationsService {
           mutedUntil: me.mutedUntil && me.mutedUntil > new Date() ? me.mutedUntil : null,
           pinnedAt: me.pinnedAt,
           hasUnreadMention: mentionConvos.has(c.id),
+          openTaskCount: openTaskCount.get(c.id) ?? 0,
+          myOpenTaskCount: myTaskCount.get(c.id) ?? 0,
           unreadCount,
           otherUser: other
             ? {
@@ -169,6 +188,7 @@ export class ConversationsService {
             userId: r.userId,
             displayName: r.user.profile?.displayName ?? r.user.username,
           })),
+      metadata: m.metadata ?? null,
       isPinned: m.pins.length > 0,
       ackCount: m.readReceipts.length,
       ackedBy: m.readReceipts.map((r) => r.userId),

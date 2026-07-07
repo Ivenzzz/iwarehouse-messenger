@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import Avatar from '@/components/avatar';
 import { api, ApiError } from '@/lib/api';
+import { disablePush, enablePush, getPushState, type PushState } from '@/lib/push';
 import { isSoundEnabled, playMessageChime, setSoundEnabled } from '@/lib/sound';
 import type { Me } from '@/lib/types';
 
@@ -17,10 +18,22 @@ export default function ProfilePage() {
   const [title, setTitle] = useState('');
   const [saved, setSaved] = useState(false);
   const [sound, setSound] = useState(true);
+  const [push, setPush] = useState<PushState>('unsupported');
+  const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     setSound(isSoundEnabled());
+    getPushState().then(setPush).catch(() => setPush('unsupported'));
   }, []);
+
+  async function togglePush() {
+    setPushBusy(true);
+    try {
+      setPush(push === 'on' ? await disablePush() : await enablePush());
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   // Seed the editable fields once me loads.
   if (me && displayName === '' && me.profile?.displayName) {
@@ -162,6 +175,28 @@ export default function ProfilePage() {
           />
         </label>
       </div>
+
+      {push !== 'unsupported' && push !== 'server-off' && (
+        <div className="mt-4 border-t border-line pt-4">
+          <label className="flex items-center justify-between gap-3">
+            <span>
+              <span className="block text-sm font-medium">Push notifications</span>
+              <span className="block text-xs text-faint">
+                {push === 'denied'
+                  ? 'Blocked in browser settings — allow notifications for this site to enable'
+                  : 'Get notified on this device even when the app is closed'}
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={push === 'on'}
+              disabled={pushBusy || push === 'denied'}
+              onChange={togglePush}
+              className="h-4 w-4 accent-[#E86F1E]"
+            />
+          </label>
+        </div>
+      )}
 
       <div className="mt-4 border-t border-line pt-4">
         <p className="text-xs text-faint">

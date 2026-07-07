@@ -3,6 +3,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, formatBytes } from '@/lib/api';
+import { StatusPill, isOverdue } from '@/components/task-drawer';
+import { listConversationTasks } from '@/lib/ops-service';
+import type { Task } from '@/lib/ops-types';
 import type { ConversationMemberInfo, ConversationSummary } from '@/lib/types';
 
 type Tab = 'details' | 'tasks' | 'erp' | 'files' | 'members';
@@ -21,9 +24,11 @@ interface SharedItem {
 export default function ContextDrawer({
   conversation,
   onClose,
+  onOpenTask,
 }: {
   conversation: ConversationSummary;
   onClose: () => void;
+  onOpenTask?: (taskId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>('details');
 
@@ -31,6 +36,11 @@ export default function ContextDrawer({
     queryKey: ['members', conversation.id],
     queryFn: () => api.get(`/conversations/${conversation.id}/members`),
     enabled: tab === 'members' || tab === 'details',
+  });
+  const { data: tasks } = useQuery<Task[]>({
+    queryKey: ['tasks', 'conversation', conversation.id],
+    queryFn: () => listConversationTasks(conversation.id),
+    enabled: tab === 'tasks',
   });
   const { data: files } = useQuery<SharedItem[]>({
     queryKey: ['shared', conversation.id, 'files'],
@@ -89,10 +99,33 @@ export default function ContextDrawer({
         )}
 
         {tab === 'tasks' && (
-          <EmptyState
-            title="No open tasks"
-            body="Tasks raised from this conversation will appear here once the Tasks module goes live."
-          />
+          <div className="space-y-1.5">
+            {!tasks && <p className="text-xs text-faint">Loading…</p>}
+            {tasks?.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onOpenTask?.(t.id)}
+                className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left hover:bg-raised ${
+                  isOverdue(t) ? 'border-danger/40' : 'border-line'
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium">{t.title}</span>
+                  <span className="block text-[10px] text-faint">
+                    {t.assignee ? `→ ${t.assignee.name}` : 'Unassigned'}
+                    {t.dueAt ? ` · due ${new Date(t.dueAt).toLocaleDateString()}` : ''}
+                  </span>
+                </span>
+                <StatusPill status={t.status} />
+              </button>
+            ))}
+            {tasks && tasks.length === 0 && (
+              <EmptyState
+                title="No open tasks"
+                body="Create one from any message (hover → task icon) or the Create Task button."
+              />
+            )}
+          </div>
         )}
 
         {tab === 'erp' && (

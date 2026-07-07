@@ -19,6 +19,8 @@ export interface ConversationSummary {
   departmentCode?: string | null;
   pinnedAt?: string | null;
   hasUnreadMention?: boolean;
+  openTaskCount?: number;
+  myOpenTaskCount?: number;
   memberCount: number;
   myRole: 'OWNER' | 'ADMIN' | 'MEMBER' | 'READ_ONLY';
   mutedUntil: string | null;
@@ -53,6 +55,28 @@ export interface ChatMessage {
   sender: { id: string; displayName: string; avatarKey?: string | null } | null;
   attachments?: MessageAttachment[];
   reactions?: MessageReaction[];
+  metadata?: {
+    task?: {
+      id: string;
+      title: string;
+      status: string;
+      priority: string;
+      dueAt: string | null;
+      assigneeName: string | null;
+    };
+    capture?: { capturedAt: string; lat?: number; lng?: number; accuracyM?: number };
+    incident?: {
+      id: string;
+      type: string;
+      typeLabel: string;
+      status: string;
+      priority: 'P1' | 'P2' | 'P3';
+      sku?: string | null;
+      imei?: string | null;
+      ownerName: string | null;
+      resolutionDeadline: string | null;
+    };
+  } | null;
   isPinned?: boolean;
   ackCount?: number;
   ackedBy?: string[];

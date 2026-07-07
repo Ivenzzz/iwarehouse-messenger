@@ -141,6 +141,15 @@ model User {
   notifications Notification[]
   notificationPreference NotificationPreference?
   auditEvents  AuditEvent[]         @relation("Actor")
+  createdTasks  Task[]         @relation("taskCreator")
+  assignedTasks Task[]         @relation("taskAssignee")
+  verifierTasks Task[]         @relation("taskVerifier")
+  taskActivity  TaskActivity[]
+  reportedIncidents   Incident[]         @relation("incidentReporter")
+  ownedIncidents      Incident[]         @relation("incidentOwner")
+  escalationIncidents Incident[]         @relation("incidentEscalation")
+  incidentActivity    IncidentActivity[]
+  pushSubscriptions   PushSubscription[]
 
   @@index([branchId])
   @@index([departmentId])
@@ -415,4 +424,172 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// ── Ops Phase 2: Tasks ────────────────────────────────────────────────────────
+
+enum TaskStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  BLOCKED
+  SUBMITTED
+  VERIFIED
+  CLOSED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model Task {
+  id              String       @id @default(uuid()) @db.Uuid
+  title           String
+  description     String?
+  status          TaskStatus   @default(OPEN)
+  priority        TaskPriority @default(NORMAL)
+  dueAt           DateTime?
+  // Assignee cannot verify/close when true (finance/stock/delivery/RMA/audit/refund)
+  requiresIndependentVerifier Boolean @default(false)
+  erpRef          String?
+  conversationId  String?      @db.Uuid
+  sourceMessageId String?      @db.Uuid
+  cardMessageId   String?      @db.Uuid
+  creatorId       String       @db.Uuid
+  assigneeId      String?      @db.Uuid
+  verifierId      String?      @db.Uuid
+  branchId        String?      @db.Uuid
+  departmentId    String?      @db.Uuid
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  closedAt        DateTime?
+
+  creator  User  @relation("taskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignee User? @relation("taskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  verifier User? @relation("taskVerifier", fields: [verifierId], references: [id], onDelete: SetNull)
+  activity TaskActivity[]
+
+  @@index([assigneeId, status])
+  @@index([conversationId, status])
+  @@index([creatorId])
+  @@index([dueAt])
+  @@map("tasks")
+}
+
+model TaskActivity {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String   @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  detail    String?
+  createdAt DateTime @default(now())
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, createdAt])
+  @@map("task_activity")
+}
+
+// ── Ops Phase 3: Incidents ────────────────────────────────────────────────────
+
+enum IncidentType {
+  STOCK_VARIANCE
+  MISSING_UNIT
+  WRONG_IMEI
+  DELIVERY_DELAY
+  DELIVERY_DAMAGE
+  CASH_DISCREPANCY
+  FINANCING_DOC_MISSING
+  CUSTOMER_COMPLAINT
+  RMA_DELAY
+  DAMAGED_UNIT
+  SYSTEM_OUTAGE
+  SECURITY_CONCERN
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  VERIFIED
+  CLOSED
+}
+
+enum IncidentPriority {
+  P1
+  P2
+  P3
+}
+
+model Incident {
+  id                 String           @id @default(uuid()) @db.Uuid
+  type               IncidentType
+  status             IncidentStatus   @default(OPEN)
+  priority           IncidentPriority @default(P2)
+  description        String
+  sku                String?
+  imei               String?
+  erpRef             String?
+  resolutionDeadline DateTime?
+  conversationId     String?          @db.Uuid
+  sourceMessageId    String?          @db.Uuid
+  cardMessageId      String?          @db.Uuid
+  reporterId         String           @db.Uuid
+  ownerId            String?          @db.Uuid
+  escalationId       String?          @db.Uuid
+  branchId           String?          @db.Uuid
+  departmentId       String?          @db.Uuid
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  closedAt           DateTime?
+
+  reporter   User  @relation("incidentReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  owner      User? @relation("incidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  escalation User? @relation("incidentEscalation", fields: [escalationId], references: [id], onDelete: SetNull)
+  activity   IncidentActivity[]
+
+  @@index([ownerId, status])
+  @@index([reporterId])
+  @@index([conversationId, status])
+  @@index([resolutionDeadline])
+  @@map("incidents")
+}
+
+model IncidentActivity {
+  id         String   @id @default(uuid()) @db.Uuid
+  incidentId String   @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_activity")
+}
+
+// ── Phase 6: Web Push subscriptions ──────────────────────────────────────────
+
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }

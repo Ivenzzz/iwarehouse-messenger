@@ -9,6 +9,9 @@ const QUICK_EMOJI = ['👍', '✅', '❌', '❤️', '😂', '😮'];
 
 export interface MessageActions {
   onReply: (m: ChatMessage) => void;
+  onCreateTask: (m: ChatMessage) => void;
+  onOpenTask: (taskId: string) => void;
+  onOpenIncident: (incidentId: string) => void;
   onReact: (m: ChatMessage, emoji: string) => void;
   onTogglePin: (m: ChatMessage) => void;
   onToggleSave: (m: ChatMessage) => void;
@@ -121,10 +124,24 @@ export default function MessageRow({
               {message.replyTo.senderName}: {message.replyTo.content.slice(0, 80)}
             </p>
           )}
-          {message.content && (
-            <span className="whitespace-pre-wrap break-words">
-              {renderWithMentions(message.content, memberUsernames, mine)}
-            </span>
+          {message.metadata?.incident ? (
+            <IncidentCardInline
+              incident={message.metadata.incident}
+              mine={mine}
+              onOpen={() => actions.onOpenIncident(message.metadata!.incident!.id)}
+            />
+          ) : message.metadata?.task ? (
+            <TaskCardInline
+              task={message.metadata.task}
+              mine={mine}
+              onOpen={() => actions.onOpenTask(message.metadata!.task!.id)}
+            />
+          ) : (
+            message.content && (
+              <span className="whitespace-pre-wrap break-words">
+                {renderWithMentions(message.content, memberUsernames, mine)}
+              </span>
+            )
           )}
           {message.attachments && message.attachments.length > 0 && (
             <AttachmentList attachments={message.attachments} mine={mine} />
@@ -203,6 +220,11 @@ export default function MessageRow({
             >
               <BookmarkGlyph filled={isSaved} />
             </ToolbarButton>
+            {!message.metadata?.task && (
+              <ToolbarButton label="Create task from message" onClick={() => actions.onCreateTask(message)}>
+                <TaskGlyph />
+              </ToolbarButton>
+            )}
             {message.content && (
               <ToolbarButton label="Copy" onClick={copyText}>
                 <CopyGlyph />
@@ -317,6 +339,115 @@ function TrashGlyph() {
     <svg {...g} aria-hidden>
       <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
     </svg>
+  );
+}
+
+function TaskGlyph() {
+  return (
+    <svg {...g} aria-hidden>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M8 12l3 3 5-6" />
+    </svg>
+  );
+}
+
+const CARD_STATUS_TONE: Record<string, string> = {
+  OPEN: 'text-soft',
+  ASSIGNED: 'text-accent',
+  IN_PROGRESS: 'text-accent',
+  BLOCKED: 'text-danger',
+  SUBMITTED: 'text-[#7A6CC8]',
+  VERIFIED: 'text-ok',
+  CLOSED: 'text-faint',
+};
+
+function TaskCardInline({
+  task,
+  mine,
+  onOpen,
+}: {
+  task: NonNullable<NonNullable<ChatMessage['metadata']>['task']>;
+  mine: boolean;
+  onOpen: () => void;
+}) {
+  const overdue =
+    !!task.dueAt && !['VERIFIED', 'CLOSED'].includes(task.status) && new Date(task.dueAt) < new Date();
+  return (
+    <button
+      onClick={onOpen}
+      className={`block w-64 max-w-full rounded-md border p-2.5 text-left ${
+        mine ? 'border-white/25' : 'border-line bg-canvas'
+      }`}
+    >
+      <p className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide ${mine ? 'text-white/70' : 'text-faint'}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <path d="M8 12l3 3 5-6" />
+        </svg>
+        Task ·{' '}
+        <span className={mine ? '' : CARD_STATUS_TONE[task.status] ?? ''}>
+          {task.status.replace('_', ' ').toLowerCase()}
+        </span>
+      </p>
+      <p className={`mt-1 text-sm font-medium leading-snug ${mine ? 'text-white' : ''}`}>{task.title}</p>
+      <p className={`mt-1 text-[11px] ${mine ? 'text-white/70' : 'text-faint'}`}>
+        {task.assigneeName ? `→ ${task.assigneeName}` : 'Unassigned'}
+        {task.dueAt && (
+          <span className={overdue ? ' font-semibold text-danger' : ''}>
+            {' · due '}
+            {new Date(task.dueAt).toLocaleDateString()}
+          </span>
+        )}
+        {task.priority !== 'NORMAL' ? ` · ${task.priority.toLowerCase()}` : ''}
+      </p>
+      <p className={`mt-1.5 text-[11px] underline ${mine ? 'text-white/80' : 'text-accent'}`}>Open task</p>
+    </button>
+  );
+}
+
+function IncidentCardInline({
+  incident,
+  mine,
+  onOpen,
+}: {
+  incident: NonNullable<NonNullable<ChatMessage['metadata']>['incident']>;
+  mine: boolean;
+  onOpen: () => void;
+}) {
+  const active = !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(incident.status);
+  const overdue =
+    !!incident.resolutionDeadline && active && new Date(incident.resolutionDeadline) < new Date();
+  const pTone =
+    incident.priority === 'P1' ? 'text-danger' : incident.priority === 'P2' ? 'text-accent' : '';
+  return (
+    <button
+      onClick={onOpen}
+      className={`block w-64 max-w-full rounded-md border p-2.5 text-left ${
+        mine ? 'border-white/25' : overdue ? 'border-danger/50 bg-canvas' : 'border-line bg-canvas'
+      }`}
+    >
+      <p className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide ${mine ? 'text-white/70' : 'text-faint'}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
+          <path d="M12 4l9 16H3L12 4z" />
+          <path d="M12 10v4M12 17h.01" strokeLinecap="round" />
+        </svg>
+        <span className={mine ? '' : pTone}>{incident.priority}</span>
+        Incident · {incident.status.replace('_', ' ').toLowerCase()}
+      </p>
+      <p className={`mt-1 text-sm font-medium leading-snug ${mine ? 'text-white' : ''}`}>
+        {incident.typeLabel}
+      </p>
+      <p className={`mt-1 text-[11px] ${mine ? 'text-white/70' : 'text-faint'}`}>
+        {incident.sku ? `SKU ${incident.sku} · ` : ''}
+        {incident.ownerName ? `owner ${incident.ownerName}` : 'unassigned'}
+        {incident.resolutionDeadline && (
+          <span className={overdue ? ' font-semibold text-danger' : ''}>
+            {overdue ? ' · SLA breached' : ` · due ${new Date(incident.resolutionDeadline).toLocaleDateString()}`}
+          </span>
+        )}
+      </p>
+      <p className={`mt-1.5 text-[11px] underline ${mine ? 'text-white/80' : 'text-accent'}`}>Open incident</p>
+    </button>
   );
 }
 

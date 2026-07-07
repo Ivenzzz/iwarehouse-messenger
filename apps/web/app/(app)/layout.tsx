@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,8 +14,16 @@ import {
 import { api } from '@/lib/api';
 import type { Me } from '@/lib/types';
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
+});
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Shell>{children}</Shell>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell>{children}</Shell>
+    </QueryClientProvider>
+  );
 }
 
 const NAV = [
@@ -41,6 +49,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!me) return;
     armSoundOnFirstGesture();
+    import('@/lib/push').then((m) => m.registerServiceWorker());
     const socket = getSocket();
 
     const onConversationUpdated = (p: {
@@ -64,7 +73,8 @@ function Shell({ children }: { children: React.ReactNode }) {
     };
 
     const onNotification = (n: { kind?: string }) => {
-      if (n.kind === 'mention') playMentionChime();
+      if (n.kind === 'mention' || n.kind === 'incident') playMentionChime();
+      else if (n.kind === 'task') playMessageChime();
     };
 
     socket.on('conversation.updated', onConversationUpdated);

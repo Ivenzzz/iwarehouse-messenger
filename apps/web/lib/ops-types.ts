@@ -17,24 +17,21 @@ export type TaskStatus =
 export interface Task {
   id: string;
   title: string;
-  description?: string;
-  sourceMessageId?: string;
-  conversationId?: string;
-  assigneeId?: string;
-  assigneeName?: string;
-  branchCode?: string;
-  departmentCode?: string;
-  priority: OpsPriority;
-  dueAt?: string;
-  erpLink?: ERPLink;
-  attachmentIds?: string[];
-  verifierId?: string;
-  verifierName?: string;
+  description?: string | null;
   status: TaskStatus;
-  createdAt: string;
-  activity: TaskActivity[];
-  // Finance/stock/delivery/RMA/audit/refund tasks cannot be self-verified.
+  priority: OpsPriority;
+  dueAt?: string | null;
   requiresIndependentVerifier: boolean;
+  erpRef?: string | null;
+  conversationId?: string | null;
+  sourceMessageId?: string | null;
+  creator: { id: string; name: string };
+  assignee: { id: string; name: string; avatarKey?: string | null } | null;
+  verifier: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+  activity?: TaskActivity[];
 }
 
 export interface TaskActivity {
@@ -71,21 +68,23 @@ export type IncidentStatus =
 export interface Incident {
   id: string;
   type: IncidentType;
-  branchCode?: string;
-  departmentCode?: string;
-  priority: IncidentPriority;
-  sku?: string;
-  imei?: string;
-  erpReference?: string;
-  description: string;
-  evidenceAttachmentIds?: string[];
-  ownerId?: string;
-  ownerName?: string;
-  resolutionDeadline?: string;
-  escalationContactName?: string;
+  typeLabel: string;
   status: IncidentStatus;
-  conversationId?: string;
+  priority: IncidentPriority;
+  description: string;
+  sku?: string | null;
+  imei?: string | null;
+  erpRef?: string | null;
+  resolutionDeadline?: string | null;
+  conversationId?: string | null;
+  sourceMessageId?: string | null;
+  reporter: { id: string; name: string };
+  owner: { id: string; name: string; avatarKey?: string | null } | null;
+  escalation: { id: string; name: string } | null;
   createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+  activity?: TaskActivity[];
 }
 
 export interface Announcement {

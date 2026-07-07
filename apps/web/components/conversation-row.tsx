@@ -66,6 +66,11 @@ export default function ConversationRow({
             {c.departmentCode && <span className="stamp">{c.departmentCode}</span>}
             <span className="stamp">{CONVERSATION_TYPE_LABEL[c.type] ?? c.type}</span>
             {c.priority && <PriorityBadge priority={c.priority} />}
+            {(c.openTaskCount ?? 0) > 0 && (
+              <span className="stamp" title="Open tasks">
+                {c.openTaskCount} task{c.openTaskCount === 1 ? '' : 's'}
+              </span>
+            )}
           </span>
         )}
 

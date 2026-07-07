@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from './push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly push: PushService,
   ) {}
 
   // Creates + pushes a notification unless the user muted that conversation.
@@ -36,6 +38,14 @@ export class NotificationsService {
       body,
       data,
       createdAt: notification.createdAt,
+    });
+    // Deliver to phones/desktops even when the tab is closed. Never await
+    // into the request path.
+    void this.push.sendToUser(userId, {
+      title,
+      body,
+      tag: kind,
+      url: data.conversationId ? `/chats?c=${data.conversationId}` : '/chats',
     });
   }
 

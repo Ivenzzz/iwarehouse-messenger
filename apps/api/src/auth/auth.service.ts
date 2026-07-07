@@ -206,7 +206,10 @@ export class AuthService {
       { secret: process.env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL },
     );
     const refreshToken = this.jwt.sign(
-      { sub, sid },
+      // jti makes every token unique even within the same second, so rotation
+      // always rotates and reuse detection can never confuse a replay with
+      // the current token.
+      { sub, sid, jti: randomUUID() },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: REFRESH_TTL },
     );
     return { accessToken, refreshToken, accessTtl: ACCESS_TTL, refreshTtl: REFRESH_TTL };

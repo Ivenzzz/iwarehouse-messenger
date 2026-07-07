@@ -43,25 +43,6 @@ export class AvatarController {
     return this.saveAvatar(user.id, file);
   }
 
-  // Admins can set photos on behalf of staff (e.g. HR loading ID photos), so
-  // every chat shows a face even for users who never open their profile page.
-  @Roles('ADMIN', 'SUPER_ADMIN')
-  @Post('admin/users/:id/avatar')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({ destination: tmpdir() }),
-      limits: { fileSize: AVATAR_MAX },
-    }),
-  )
-  async adminUpload(
-    @Param('id', ParseUUIDPipe) id: string,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    const target = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
-    if (!target) throw new BadRequestException('User not found');
-    return this.saveAvatar(id, file);
-  }
-
   private async saveAvatar(userId: string, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No image received');
     if (!ALLOWED.includes(file.mimetype)) {
@@ -87,6 +68,35 @@ export class AvatarController {
 
   // Admins can set a photo on any user's behalf — lets HR/IT roll out staff
   // photos centrally instead of waiting for each employee.
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Post('admin/users/:id/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({ destination: tmpdir() }),
+      limits: { fileSize: AVATAR_MAX },
+    }),
+  )
+  async adminUpload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('No image received');
+    if (!ALLOWED.includes(file.mimetype)) {
+      throw new BadRequestException('Avatar must be a JPG, PNG, or WEBP image');
+    }
+    const key = `avatars/${id}/${randomUUID()}`;
+    try {
+      await this.storage.putFile(key, file.path, file.size, file.mimetype);
+      const existing = await this.prisma.userProfile.findUnique({ where: { userId: id } });
+      if (!existing) throw new BadRequestException('User not found');
+      await this.prisma.userProfile.update({ where: { userId: id }, data: { avatarKey: key } });
+      if (existing.avatarKey) this.storage.remove(existing.avatarKey).catch(() => undefined);
+      return { avatarKey: key };
+    } finally {
+      await unlink(file.path).catch(() => undefined);
+    }
+  }
+
   // Avatars are low-sensitivity (name + face, already visible in chat), so
   // they are readable by any authenticated user by user id.
   @Get('users/:id/avatar')
@@ -100,6 +110,8 @@ export class AvatarController {
       const stat = await this.storage.stat(profile.avatarKey);
       res.setHeader('Content-Type', stat.metaData?.['content-type'] ?? 'image/jpeg');
       res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Disposition', 'inline');
       const stream = await this.storage.getStream(profile.avatarKey);
       stream.pipe(res);
     } catch {

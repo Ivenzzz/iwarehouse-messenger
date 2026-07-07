@@ -14,6 +14,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StorageModule } from './storage/storage.module';
+import { IncidentsModule } from './incidents/incidents.module';
+import { TasksModule } from './tasks/tasks.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
 
@@ -26,6 +28,8 @@ import { UsersModule } from './users/users.module';
     RealtimeModule,
     NotificationsModule,
     StorageModule,
+    TasksModule,
+    IncidentsModule,
     UploadsModule,
     AuditModule,
     AuthModule,

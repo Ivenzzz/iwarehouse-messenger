@@ -5,6 +5,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, formatBytes, uploadFile, type UploadedInfo } from '@/lib/api';
 import { ConversationIcon } from '@/components/conversation-icon';
 import ContextDrawer from '@/components/context-drawer';
+import CreateTaskModal from '@/components/create-task-modal';
+import IncidentDrawer from '@/components/incident-drawer';
+import RaiseIncidentModal from '@/components/raise-incident-modal';
+import TaskDrawer from '@/components/task-drawer';
 import { PriorityBadge } from '@/components/conversation-row';
 import { EmojiPicker } from '@/components/emoji';
 import MessageRow from '@/components/message-row';
@@ -64,6 +68,12 @@ export default function ChatView({
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [taskModal, setTaskModal] = useState<
+    { open: true; sourceMessage?: { id: string; content: string; senderName?: string } } | null
+  >(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [incidentModal, setIncidentModal] = useState(false);
+  const [openIncidentId, setOpenIncidentId] = useState<string | null>(null);
   const [captureMeta, setCaptureMeta] = useState<CaptureMeta | null>(null);
   const [convPinned, setConvPinned] = useState<boolean>(Boolean(conversation.pinnedAt));
   const [muted, setMuted] = useState<boolean>(Boolean(conversation.mutedUntil));
@@ -246,7 +256,30 @@ export default function ChatView({
     socket.on('reaction.remove', onReactionRemove);
     socket.on('message.pinned', onPinned);
     socket.on('message.acked', onAcked);
+    const onRefresh = (p: { conversationId: string }) => {
+      if (!inThis(p)) return;
+      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    };
+    const onTaskUpdated = (p: { conversationId?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      if (p.conversationId === conversation.id) {
+        queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      }
+    };
+    const onIncidentUpdated = (p: { conversationId?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['incidents'] });
+      if (p.conversationId === conversation.id) {
+        queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      }
+    };
+    socket.on('conversation.refresh', onRefresh);
+    socket.on('task.updated', onTaskUpdated);
+    socket.on('incident.updated', onIncidentUpdated);
     return () => {
+      socket.off('conversation.refresh', onRefresh);
+      socket.off('task.updated', onTaskUpdated);
+      socket.off('incident.updated', onIncidentUpdated);
       socket.emit('conversation.leave', { conversationId: conversation.id });
       socket.off('message.new', onNew);
       socket.off('message.updated', onUpdated);
@@ -386,6 +419,13 @@ export default function ChatView({
   }
 
   const actions = {
+    onCreateTask: (m: ChatMessage) =>
+      setTaskModal({
+        open: true,
+        sourceMessage: { id: m.id, content: m.content, senderName: m.sender?.displayName },
+      }),
+    onOpenTask: (taskId: string) => setOpenTaskId(taskId),
+    onOpenIncident: (incidentId: string) => setOpenIncidentId(incidentId),
     onReply: (m: ChatMessage) => {
       setReplyTo(m);
       textRef.current?.focus();
@@ -519,20 +559,18 @@ export default function ChatView({
                 : `${conversation.memberCount} members`}
           </p>
         </div>
+        <button
+          onClick={() => setTaskModal({ open: true })}
+          className="hidden rounded-md border border-line px-2.5 py-1 text-xs font-medium text-soft hover:text-ink md:inline-flex"
+          title="Create a task in this conversation"
+        >
+          Create Task
+        </button>
         {conversation.type !== 'DIRECT' && (
           <button
-            className="hidden rounded-md border border-line px-2.5 py-1 text-xs font-medium text-soft opacity-60 md:inline-flex"
-            title="Create task — coming in the Tasks update"
-            disabled
-          >
-            Create Task
-          </button>
-        )}
-        {conversation.type === 'INCIDENT' && (
-          <button
-            className="hidden rounded-md border border-line px-2.5 py-1 text-xs font-medium text-soft opacity-60 md:inline-flex"
-            title="Raise incident — coming in the Incidents update"
-            disabled
+            onClick={() => setIncidentModal(true)}
+            className="hidden rounded-md border border-danger/40 px-2.5 py-1 text-xs font-medium text-danger md:inline-flex"
+            title="Raise a structured incident in this conversation"
           >
             Raise Incident
           </button>
@@ -836,8 +874,22 @@ export default function ChatView({
                     }}
                   />
                   <div className="my-1 border-t border-line" />
-                  <PlusItem label="Create task" icon="🗂️" soon />
-                  <PlusItem label="Raise incident" icon="🚨" soon />
+                  <PlusItem
+                    label="Create task"
+                    icon="🗂️"
+                    onClick={() => {
+                      setShowPlusMenu(false);
+                      setTaskModal({ open: true });
+                    }}
+                  />
+                  <PlusItem
+                    label="Raise incident"
+                    icon="🚨"
+                    onClick={() => {
+                      setShowPlusMenu(false);
+                      setIncidentModal(true);
+                    }}
+                  />
                   <PlusItem label="Request approval" icon="✅" soon />
                   <PlusItem label="Attach ERP record" icon="🧾" soon />
                   <PlusItem label="Share location" icon="📍" soon />
@@ -920,6 +972,31 @@ export default function ChatView({
 
       {acksFor && <AcksModal message={acksFor} onClose={() => setAcksFor(null)} />}
 
+      {taskModal && (
+        <CreateTaskModal
+          conversationId={conversation.id}
+          sourceMessage={taskModal.sourceMessage}
+          onClose={() => setTaskModal(null)}
+          onCreated={(taskId) => setOpenTaskId(taskId)}
+        />
+      )}
+
+      {openTaskId && (
+        <TaskDrawer taskId={openTaskId} me={me} onClose={() => setOpenTaskId(null)} />
+      )}
+
+      {incidentModal && (
+        <RaiseIncidentModal
+          conversationId={conversation.id}
+          onClose={() => setIncidentModal(false)}
+          onCreated={(id) => setOpenIncidentId(id)}
+        />
+      )}
+
+      {openIncidentId && (
+        <IncidentDrawer incidentId={openIncidentId} me={me} onClose={() => setOpenIncidentId(null)} />
+      )}
+
       {showCamera && (
         <StampedCamera
           me={me}
@@ -933,7 +1010,11 @@ export default function ChatView({
       )}
     </section>
     {showDrawer && (
-      <ContextDrawer conversation={conversation} onClose={() => setShowDrawer(false)} />
+      <ContextDrawer
+        conversation={conversation}
+        onClose={() => setShowDrawer(false)}
+        onOpenTask={(id) => setOpenTaskId(id)}
+      />
     )}
     </div>
   );
