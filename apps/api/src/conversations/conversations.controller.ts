@@ -34,7 +34,6 @@ import {
   MaxLength,
   Min,
   MinLength,
-  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AuthUser, CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -62,6 +61,16 @@ class CaptureMetaDto {
   @IsOptional() @Type(() => Number) accuracyM?: number;
 }
 
+class AddMembersDto {
+  @IsArray() @ArrayMaxSize(100) @IsUUID('4', { each: true }) userIds: string[];
+}
+
+class ErpRefDto {
+  @IsIn(['TRANSFER', 'GRN', 'INVOICE', 'RMA', 'PO', 'SO', 'OTHER']) kind: string;
+  @IsString() @MinLength(2) @MaxLength(60) ref: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+}
+
 class SendMessageDto {
   @IsOptional() @IsString() @MaxLength(8000) content?: string;
   @IsOptional() @IsUUID() replyToMessageId?: string;
@@ -69,6 +78,7 @@ class SendMessageDto {
   // Evidence record for stamped-camera photos: stored server-side in the
   // message metadata so the burned-in stamp isn't the only record.
   @IsOptional() @ValidateNested() @Type(() => CaptureMetaDto) capture?: CaptureMetaDto;
+  @IsOptional() @ValidateNested() @Type(() => ErpRefDto) erp?: ErpRefDto;
 }
 
 class EditMessageDto {
@@ -204,6 +214,24 @@ export class ConversationsController {
   @Get('conversations/:id/files')
   files(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.conversations.sharedFiles(id, user.id, 'files');
+  }
+
+  @Post('conversations/:id/members')
+  addMembers(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddMembersDto,
+  ) {
+    return this.conversations.addMembers(id, { id: user.id, role: user.role }, dto.userIds);
+  }
+
+  @Delete('conversations/:id/members/:userId')
+  removeMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.conversations.removeMember(id, { id: user.id, role: user.role }, userId);
   }
 
   @Get('conversations/:id/members')

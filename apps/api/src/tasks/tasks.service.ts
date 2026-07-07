@@ -267,15 +267,6 @@ export class TasksService {
 
   // ── rules ──────────────────────────────────────────────────────────────────
 
-  private async taskOrThrow(taskId: string) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId },
-      include: taskInclude,
-    });
-    if (!task) throw new NotFoundException('Task not found');
-    return task;
-  }
-
   private assertTransition(
     task: TaskRow,
     actor: { id: string; role: string },

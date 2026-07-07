@@ -9,6 +9,7 @@ import { Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 interface Actor {
   id: string;
@@ -31,6 +32,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   // Only SUPER_ADMIN may create or modify other admins.
@@ -94,6 +96,7 @@ export class AdminService {
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+      this.realtime.disconnectUser(id);
     }
 
     await this.audit.log({
@@ -149,4 +152,63 @@ export class AdminService {
       return { users, activeUsers: active, branches, departments, activeSessions: sessions };
     });
   }
+
+  // System dashboard (Phase 5): one call, everything a manager wants to see.
+  async systemStats() {
+    const OPEN_TASK: any[] = ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'BLOCKED', 'SUBMITTED'];
+    const [
+      usersTotal, usersActive, sessionsActive, conversations, messages,
+      uploadsAgg, tasksByStatus, incidentsByStatus, slaBreached,
+      incidentsByBranch, dbSize,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.user.count({ where: { deletedAt: null, status: 'ACTIVE' } }),
+      this.prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
+      this.prisma.conversation.count(),
+      this.prisma.message.count({ where: { deletedAt: null } }),
+      this.prisma.upload.aggregate({ _count: { _all: true }, _sum: { sizeBytes: true } }),
+      this.prisma.task.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.incident.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.incident.count({
+        where: {
+          resolutionDeadline: { lt: new Date() },
+          status: { in: ['OPEN', 'ACKNOWLEDGED', 'ASSIGNED', 'IN_PROGRESS'] as any },
+        },
+      }),
+      this.prisma.incident.groupBy({
+        by: ['branchId'],
+        where: { status: { not: 'CLOSED' } },
+        _count: { _all: true },
+      }),
+      this.prisma.$queryRaw<{ size: bigint }[]>`SELECT pg_database_size(current_database()) AS size`,
+    ]);
+    const branches = await this.prisma.branch.findMany({ select: { id: true, code: true } });
+    const branchCode = new Map(branches.map((b) => [b.id, b.code]));
+    return {
+      users: { total: usersTotal, active: usersActive },
+      sessionsActive,
+      conversations,
+      messages,
+      uploads: {
+        count: uploadsAgg._count._all,
+        bytes: Number(uploadsAgg._sum.sizeBytes ?? 0),
+      },
+      tasks: {
+        open: tasksByStatus
+          .filter((g) => OPEN_TASK.includes(g.status))
+          .reduce((a, g) => a + g._count._all, 0),
+        byStatus: Object.fromEntries(tasksByStatus.map((g) => [g.status, g._count._all])),
+      },
+      incidents: {
+        byStatus: Object.fromEntries(incidentsByStatus.map((g) => [g.status, g._count._all])),
+        slaBreached,
+        openByBranch: incidentsByBranch
+          .filter((g) => g.branchId)
+          .map((g) => ({ branch: branchCode.get(g.branchId!) ?? '—', count: g._count._all })),
+      },
+      databaseMb: Math.round(Number(dbSize[0]?.size ?? 0) / 1_048_576),
+      serverTime: new Date().toISOString(),
+    };
+  }
+
 }

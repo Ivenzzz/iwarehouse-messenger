@@ -83,13 +83,15 @@ import * as path from 'path';
 const src = fs
   .readFileSync(path.join(__dirname, '../src/auth/auth.service.ts'), 'utf8')
   .replace("import { AuditService } from '../audit/audit.service';", 'type AuditService = any;')
-  .replace("import { PrismaService } from '../prisma/prisma.service';", 'type PrismaService = any;');
+  .replace("import { PrismaService } from '../prisma/prisma.service';", 'type PrismaService = any;')
+  .replace("import { RealtimeService } from '../realtime/realtime.service';", 'type RealtimeService = any;');
 const tmp = path.join(__dirname, '_auth.service.under-test.ts');
 fs.writeFileSync(tmp, src);
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { AuthService } = require(tmp);
 
 const jwt = new JwtService({});
+const realtimeStub = { disconnectSession: () => undefined, disconnectUser: () => undefined };
 const meta = { ip: '127.0.0.1', userAgent: 'test' };
 
 let passed = 0;
@@ -118,7 +120,7 @@ async function expectError(p: Promise<any>, contains: string, status?: number) {
 
 async function main() {
   const prisma = makeDb();
-  const svc = new AuthService(prisma, jwt, audit);
+  const svc = new AuthService(prisma, jwt, audit, realtimeStub);
   const hash = await argon2.hash('Correct#123', { type: argon2.argon2id });
   prisma._users.set('u1', {
     id: 'u1', email: 'michael.yap@iwarehouse.ph', username: 'michael.yap',

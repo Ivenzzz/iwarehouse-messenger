@@ -252,12 +252,20 @@ function EditableAvatar({ user, canEdit }: { user: DirectoryUser; canEdit: boole
         className="block"
       >
         {avatar}
+        {/* Desktop: hover overlay */}
         <span
-          className={`absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-[9px] font-semibold text-white ${
-            busy ? 'flex' : 'hidden group-hover/av:flex'
+          className={`absolute inset-0 hidden items-center justify-center rounded-full bg-black/45 text-[9px] font-semibold text-white ${
+            busy ? 'md:flex' : 'md:hidden md:group-hover/av:flex'
           }`}
         >
           {busy ? '…' : 'EDIT'}
+        </span>
+        {/* Touch: persistent corner badge (audit U-1) */}
+        <span
+          className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full border border-surface bg-accent text-[8px] text-accent-ink md:hidden"
+          aria-hidden
+        >
+          {busy ? '…' : '✎'}
         </span>
       </button>
     </span>

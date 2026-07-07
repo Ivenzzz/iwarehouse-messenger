@@ -69,6 +69,7 @@ export class RealtimeGateway
       };
       socket.data.user = su;
       await socket.join(`user:${su.id}`);
+      await socket.join(`session:${payload.sid}`);
 
       const count = (this.connections.get(su.id) ?? 0) + 1;
       this.connections.set(su.id, count);

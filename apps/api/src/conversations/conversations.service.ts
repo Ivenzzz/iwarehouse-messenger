@@ -314,6 +314,7 @@ export class ConversationsService {
       replyToMessageId?: string;
       attachmentIds?: string[];
       capture?: { capturedAt: string; lat?: number; lng?: number; accuracyM?: number };
+      erp?: { kind: string; ref: string; note?: string };
     },
   ) {
     const member = await this.assertMember(conversationId, userId);
@@ -331,7 +332,7 @@ export class ConversationsService {
     // to another message.
     const uploads = attachmentIds.length
       ? await this.prisma.upload.findMany({
-          where: { id: { in: attachmentIds }, userId, status: 'COMPLETE' },
+          where: { id: { in: attachmentIds }, userId, status: 'COMPLETE', scanStatus: { not: 'INFECTED' } },
         })
       : [];
     if (uploads.length !== attachmentIds.length) {
@@ -364,9 +365,13 @@ export class ConversationsService {
         contentType,
         replyToMessageId: input.replyToMessageId,
         deliveryStatus: 'SENT',
-        metadata: input.capture
-          ? ({ capture: input.capture } as Prisma.InputJsonValue)
-          : undefined,
+        metadata:
+          input.capture || input.erp
+            ? ({
+                ...(input.capture ? { capture: input.capture } : {}),
+                ...(input.erp ? { erp: input.erp } : {}),
+              } as Prisma.InputJsonValue)
+            : undefined,
         attachments: {
           create: uploads.map((u) => ({
             storageKey: u.storageKey,
@@ -512,6 +517,82 @@ export class ConversationsService {
       role: m.role,
       lastReadAt: m.lastReadAt,
     }));
+  }
+
+  private async assertCanManageMembers(conversationId: string, actor: { id: string; role: string }) {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+    });
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    if (conversation.type === 'DIRECT') {
+      throw new BadRequestException('Direct conversations have fixed members');
+    }
+    if (['ADMIN', 'SUPER_ADMIN'].includes(actor.role)) return conversation;
+    const me = await this.prisma.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId: actor.id } },
+    });
+    if (!me || (me.role !== 'OWNER' && me.role !== 'ADMIN')) {
+      throw new ForbiddenException('Only the group owner or an admin can manage members');
+    }
+    return conversation;
+  }
+
+  async addMembers(conversationId: string, actor: { id: string; role: string }, userIds: string[]) {
+    const conversation = await this.assertCanManageMembers(conversationId, actor);
+    const targets = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(userIds)] }, deletedAt: null, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    const existing = await this.prisma.conversationMember.findMany({
+      where: { conversationId, userId: { in: targets.map((u) => u.id) } },
+      select: { userId: true },
+    });
+    const existingIds = new Set(existing.map((m) => m.userId));
+    const toAdd = targets.filter((u) => !existingIds.has(u.id));
+    if (toAdd.length) {
+      await this.prisma.conversationMember.createMany({
+        data: toAdd.map((u) => ({
+          conversationId,
+          userId: u.id,
+          role: (conversation.type === 'ANNOUNCEMENT' ? 'READ_ONLY' : 'MEMBER') as MemberRole,
+        })),
+      });
+      this.realtime.emitToUsers(
+        toAdd.map((u) => u.id),
+        'conversation.updated',
+        { conversationId },
+      );
+      this.realtime.emitToConversation(conversationId, 'conversation.refresh', { conversationId });
+    }
+    return { added: toAdd.length };
+  }
+
+  async removeMember(conversationId: string, actor: { id: string; role: string }, userId: string) {
+    // Leaving is always allowed (except the owner); removing others needs
+    // management rights.
+    if (userId !== actor.id) {
+      await this.assertCanManageMembers(conversationId, actor);
+    } else {
+      const conversation = await this.prisma.conversation.findUnique({
+        where: { id: conversationId },
+      });
+      if (conversation?.type === 'DIRECT') {
+        throw new BadRequestException('Direct conversations have fixed members');
+      }
+    }
+    const member = await this.prisma.conversationMember.findUnique({
+      where: { conversationId_userId: { conversationId, userId } },
+    });
+    if (!member) throw new NotFoundException('Not a member');
+    if (member.role === 'OWNER') {
+      throw new BadRequestException('The group owner cannot be removed — transfer ownership first');
+    }
+    await this.prisma.conversationMember.delete({
+      where: { conversationId_userId: { conversationId, userId } },
+    });
+    this.realtime.emitToUser(userId, 'conversation.updated', { conversationId });
+    this.realtime.emitToConversation(conversationId, 'conversation.refresh', { conversationId });
+    return { removed: true };
   }
 
   async sharedFiles(conversationId: string, userId: string, kind: 'media' | 'files') {

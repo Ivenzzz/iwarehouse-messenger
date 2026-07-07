@@ -15,6 +15,7 @@ const COOKIE_SECURE = process.env.COOKIE_SECURE !== 'false';
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 
 function setAuthCookies(res: Response, tokens: TokenPair) {
+  const remember = tokens.remember !== false;
   const base = {
     httpOnly: true,
     secure: COOKIE_SECURE,
@@ -22,13 +23,17 @@ function setAuthCookies(res: Response, tokens: TokenPair) {
     domain: COOKIE_DOMAIN,
     path: '/',
   };
-  res.cookie('iwm_access', tokens.accessToken, { ...base, maxAge: tokens.accessTtl * 1000 });
+  res.cookie('iwm_access', tokens.accessToken, {
+    ...base,
+    // Session cookie when not remembering: gone when the browser closes.
+    ...(remember ? { maxAge: tokens.accessTtl * 1000 } : {}),
+  });
   // The API is served under /api by NGINX (and the Next.js dev rewrite), so the
   // refresh cookie is scoped to the refresh route as the browser sees it.
   res.cookie('iwm_refresh', tokens.refreshToken, {
     ...base,
     path: '/api/auth',
-    maxAge: tokens.refreshTtl * 1000,
+    ...(remember ? { maxAge: tokens.refreshTtl * 1000 } : {}),
   });
 }
 
@@ -104,7 +109,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { tokens, user } = await this.auth.login(dto.email, dto.password, meta(req));
+    const { tokens, user } = await this.auth.login(dto.email, dto.password, meta(req), dto.rememberMe ?? true);
     setAuthCookies(res, tokens);
     return { user };
   }

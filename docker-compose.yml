@@ -1,6 +1,20 @@
 name: iwarehouse-messenger
 
 services:
+  clamav:
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    # Antivirus daemon for upload scanning. Needs ~1 GB RAM once signatures
+    # load; first start downloads the signature database (several minutes,
+    # needs internet). Uploads are marked FAILED (allowed, logged) while it
+    # warms up — see SECURITY.md for the fail-open rationale.
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 10m
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped

@@ -15,6 +15,17 @@ export class RealtimeService {
     this.server?.to(`conv:${conversationId}`).emit(event, payload);
   }
 
+  // Kill live sockets the moment their session/user is revoked (audit F-1),
+  // so deactivation and remote sign-out take effect instantly, not on the
+  // next reconnect.
+  disconnectSession(sessionId: string) {
+    this.server?.in(`session:${sessionId}`).disconnectSockets(true);
+  }
+
+  disconnectUser(userId: string) {
+    this.server?.in(`user:${userId}`).disconnectSockets(true);
+  }
+
   emitToUser(userId: string, event: string, payload: unknown) {
     this.server?.to(`user:${userId}`).emit(event, payload);
   }

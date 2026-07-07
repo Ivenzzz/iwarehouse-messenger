@@ -43,6 +43,25 @@ export class AvatarController {
     return this.saveAvatar(user.id, file);
   }
 
+  // Admins can set photos on behalf of staff (e.g. HR loading ID photos), so
+  // every chat shows a face even for users who never open their profile page.
+  @Roles('ADMIN')
+  @Post('admin/users/:id/avatar')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({ destination: tmpdir() }),
+      limits: { fileSize: AVATAR_MAX },
+    }),
+  )
+  async adminUpload(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const target = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!target) throw new BadRequestException('User not found');
+    return this.saveAvatar(id, file);
+  }
+
   private async saveAvatar(userId: string, file: Express.Multer.File) {
     if (!file) throw new BadRequestException('No image received');
     if (!ALLOWED.includes(file.mimetype)) {

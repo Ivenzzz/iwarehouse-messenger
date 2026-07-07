@@ -8,6 +8,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomUUID } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 const ACCESS_TTL = Number(process.env.JWT_ACCESS_TTL ?? 900);
 const REFRESH_TTL = Number(process.env.JWT_REFRESH_TTL ?? 2_592_000);
@@ -15,6 +16,7 @@ const MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS ?? 5);
 const LOCKOUT_MIN = Number(process.env.LOGIN_LOCKOUT_MINUTES ?? 15);
 
 export interface TokenPair {
+  remember: boolean;
   accessToken: string;
   refreshToken: string;
   accessTtl: number;
@@ -35,9 +37,10 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimeService,
   ) {}
 
-  async login(email: string, password: string, meta: RequestMeta) {
+  async login(email: string, password: string, meta: RequestMeta, remember = true) {
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
       include: { profile: true },
@@ -91,7 +94,7 @@ export class AuthService {
       data: { failedLoginCount: 0, lockedUntil: null, lastActiveAt: new Date() },
     });
 
-    const tokens = await this.createSession(user.id, user.email, user.role, meta);
+    const tokens = await this.createSession(user.id, user.email, user.role, meta, remember);
     await this.audit.log({
       actorId: user.id, action: 'auth.login', target: user.email, result: 'SUCCESS', ...meta,
     });
@@ -126,13 +129,15 @@ export class AuthService {
         actorId: session.userId, action: 'auth.refresh_reuse_detected',
         target: session.id, result: 'DENIED', ...meta,
       });
+      this.realtime.disconnectSession(session.id);
       throw new UnauthorizedException('Session revoked');
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Account disabled');
 
-    const tokens = this.issueTokens(user.id, user.email, user.role, session.id);
+    const remember = (payload as { rm?: boolean }).rm !== false;
+    const tokens = this.issueTokens(user.id, user.email, user.role, session.id, remember);
     await this.prisma.session.update({
       where: { id: session.id },
       data: {
@@ -152,6 +157,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     await this.audit.log({ actorId, action: 'auth.logout', target: sessionId, ...meta });
+    this.realtime.disconnectSession(sessionId);
   }
 
   async listSessions(userId: string) {
@@ -170,6 +176,7 @@ export class AuthService {
     await this.audit.log({
       actorId, action: 'auth.session_revoked', target: sessionId, ...meta,
     });
+    this.realtime.disconnectSession(sessionId);
   }
 
   // Used by Google sign-in after it has fully authenticated the user.
@@ -184,9 +191,10 @@ export class AuthService {
     email: string,
     role: string,
     meta: RequestMeta,
+    remember = true,
   ): Promise<TokenPair> {
     const sessionId = randomUUID();
-    const tokens = this.issueTokens(userId, email, role, sessionId);
+    const tokens = this.issueTokens(userId, email, role, sessionId, remember);
     await this.prisma.session.create({
       data: {
         id: sessionId,
@@ -200,7 +208,7 @@ export class AuthService {
     return tokens;
   }
 
-  private issueTokens(sub: string, email: string, role: string, sid: string): TokenPair {
+  private issueTokens(sub: string, email: string, role: string, sid: string, remember = true): TokenPair {
     const accessToken = this.jwt.sign(
       { sub, email, role, sid },
       { secret: process.env.JWT_ACCESS_SECRET, expiresIn: ACCESS_TTL },
@@ -209,10 +217,10 @@ export class AuthService {
       // jti makes every token unique even within the same second, so rotation
       // always rotates and reuse detection can never confuse a replay with
       // the current token.
-      { sub, sid, jti: randomUUID() },
+      { sub, sid, jti: randomUUID(), rm: remember },
       { secret: process.env.JWT_REFRESH_SECRET, expiresIn: REFRESH_TTL },
     );
-    return { accessToken, refreshToken, accessTtl: ACCESS_TTL, refreshTtl: REFRESH_TTL };
+    return { accessToken, refreshToken, accessTtl: ACCESS_TTL, refreshTtl: REFRESH_TTL, remember };
   }
 
   publicUser(user: any) {

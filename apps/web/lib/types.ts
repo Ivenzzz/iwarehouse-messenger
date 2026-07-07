@@ -65,6 +65,7 @@ export interface ChatMessage {
       assigneeName: string | null;
     };
     capture?: { capturedAt: string; lat?: number; lng?: number; accuracyM?: number };
+    erp?: { kind: string; ref: string; note?: string };
     incident?: {
       id: string;
       type: string;

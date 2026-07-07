@@ -14,6 +14,12 @@ import { EmojiPicker } from '@/components/emoji';
 import MessageRow from '@/components/message-row';
 import SharedFilesPanel from '@/components/shared-files-panel';
 import StampedCamera, { cameraAvailable, type CaptureMeta } from '@/components/stamped-camera';
+import {
+  VoiceRecorderBar,
+  dictationAvailable,
+  useDictation,
+  voiceRecordingAvailable,
+} from '@/components/voice-recorder';
 import { getSocket } from '@/lib/socket';
 import type {
   ChatMessage,
@@ -73,6 +79,19 @@ export default function ChatView({
   >(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [incidentModal, setIncidentModal] = useState(false);
+  const [erpModal, setErpModal] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const dictation = useDictation((text) => {
+    onDraftChange((draftRef.current ? draftRef.current.replace(/\s*$/, ' ') : '') + text);
+  });
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  const [erpKind, setErpKind] = useState('TRANSFER');
+  const [erpRef, setErpRef] = useState('');
+  const [erpNote, setErpNote] = useState('');
+  const [erpBusy, setErpBusy] = useState(false);
   const [openIncidentId, setOpenIncidentId] = useState<string | null>(null);
   const [captureMeta, setCaptureMeta] = useState<CaptureMeta | null>(null);
   const [convPinned, setConvPinned] = useState<boolean>(Boolean(conversation.pinnedAt));
@@ -783,6 +802,18 @@ export default function ChatView({
         )}
 
         {canPost ? (
+          <>
+          {recording && (
+            <div className="mb-2">
+              <VoiceRecorderBar
+                onCancel={() => setRecording(false)}
+                onSend={(file) => {
+                  setRecording(false);
+                  addFiles([file]);
+                }}
+              />
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <input
               ref={fileInputRef}
@@ -826,6 +857,33 @@ export default function ChatView({
                 e.target.value = '';
               }}
             />
+            {voiceRecordingAvailable() && (
+              <button
+                onClick={() => setRecording(true)}
+                aria-label="Record voice note"
+                title="Record voice note"
+                className="rounded-md border border-line px-2.5 py-2 text-soft hover:text-ink"
+              >
+                <MicGlyph />
+              </button>
+            )}
+            {dictationAvailable() && (
+              <button
+                onClick={dictation.toggle}
+                onDoubleClick={dictation.switchLang}
+                aria-label={dictation.listening ? 'Stop dictation' : 'Dictate message'}
+                title={`${dictation.listening ? 'Stop dictation' : 'Dictate (speech to text)'} — ${
+                  dictation.lang === 'fil-PH' ? 'Filipino' : 'English'
+                }. Double-tap to switch language.`}
+                className={`rounded-md border px-2.5 py-2 ${
+                  dictation.listening
+                    ? 'border-danger/50 text-danger'
+                    : 'border-line text-soft hover:text-ink'
+                }`}
+              >
+                <DictationGlyph active={dictation.listening} />
+              </button>
+            )}
             <button
               onClick={() => {
                 if (cameraAvailable()) setShowCamera(true);
@@ -943,6 +1001,7 @@ export default function ChatView({
               Send
             </button>
           </div>
+          </>
         ) : (
           <p className="py-1 text-center text-xs text-faint">
             Only admins can post in this channel. You can read, react, and acknowledge.
@@ -985,6 +1044,88 @@ export default function ChatView({
         <TaskDrawer taskId={openTaskId} me={me} onClose={() => setOpenTaskId(null)} />
       )}
 
+      {erpModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setErpModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-line bg-surface"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between border-b border-line px-4 py-3">
+              <h2 className="text-sm font-semibold">Attach ERP record</h2>
+              <button onClick={() => setErpModal(false)} aria-label="Close" className="text-soft hover:text-ink">✕</button>
+            </header>
+            <div className="space-y-3 p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-soft">Type</span>
+                  <select
+                    value={erpKind}
+                    onChange={(e) => setErpKind(e.target.value)}
+                    className="mt-1 w-full rounded-md border border-line bg-canvas px-2 py-2 text-sm"
+                  >
+                    <option value="TRANSFER">Stock Transfer</option>
+                    <option value="GRN">Goods Receipt (GRN)</option>
+                    <option value="INVOICE">Invoice</option>
+                    <option value="RMA">RMA</option>
+                    <option value="PO">Purchase Order</option>
+                    <option value="SO">Sales Order</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-soft">Reference no.</span>
+                  <input
+                    autoFocus
+                    value={erpRef}
+                    onChange={(e) => setErpRef(e.target.value)}
+                    placeholder="TR-2026-00844"
+                    className="mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 font-mono text-sm"
+                  />
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-xs font-medium text-soft">Note (optional)</span>
+                <input
+                  value={erpNote}
+                  onChange={(e) => setErpNote(e.target.value)}
+                  placeholder="e.g. the transfer with the variance"
+                  className="mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-line px-4 py-3">
+              <button onClick={() => setErpModal(false)} className="rounded-md border border-line px-3 py-1.5 text-sm">
+                Cancel
+              </button>
+              <button
+                disabled={erpBusy || erpRef.trim().length < 2}
+                onClick={async () => {
+                  setErpBusy(true);
+                  try {
+                    await api.post(`/conversations/${conversation.id}/messages`, {
+                      content: `${erpKind} ${erpRef.trim()}`,
+                      erp: { kind: erpKind, ref: erpRef.trim(), note: erpNote.trim() || undefined },
+                    });
+                    queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+                    setErpModal(false);
+                    setErpRef('');
+                    setErpNote('');
+                  } finally {
+                    setErpBusy(false);
+                  }
+                }}
+                className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-ink disabled:opacity-50"
+              >
+                {erpBusy ? 'Attaching…' : 'Attach'}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
       {incidentModal && (
         <RaiseIncidentModal
           conversationId={conversation.id}
@@ -1014,6 +1155,7 @@ export default function ChatView({
         conversation={conversation}
         onClose={() => setShowDrawer(false)}
         onOpenTask={(id) => setOpenTaskId(id)}
+        me={me}
       />
     )}
     </div>
@@ -1088,6 +1230,23 @@ function PanelGlyph() {
     </svg>
   );
 }
+function MicGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
+function DictationGlyph({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" opacity={active ? 1 : 0.85} />
+    </svg>
+  );
+}
+
 function CameraGlyph() {
   return (
     <svg {...hg} aria-hidden>

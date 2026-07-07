@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { FormEvent, Suspense, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 
 export default function LoginPage() {
@@ -28,12 +28,20 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const [remember, setRemember] = useState(true);
+
+  useEffect(() => {
+    const last = window.localStorage.getItem('iwm-last-email');
+    if (last) setEmail(last);
+  }, []);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      await api.post('/auth/login', { email, password });
+      await api.post('/auth/login', { email, password, rememberMe: remember });
+      window.localStorage.setItem('iwm-last-email', email);
       router.push('/chats');
       router.refresh();
     } catch (err) {
@@ -125,6 +133,16 @@ function LoginForm() {
               {error}
             </p>
           )}
+
+          <label className="mb-4 mt-1 flex items-center gap-2 text-sm text-soft">
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+              className="h-4 w-4 accent-[#E86F1E]"
+            />
+            Keep me signed in on this device
+          </label>
 
           <button
             type="submit"

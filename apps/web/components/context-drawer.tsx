@@ -1,12 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, formatBytes } from '@/lib/api';
 import { StatusPill, isOverdue } from '@/components/task-drawer';
 import { listConversationTasks } from '@/lib/ops-service';
 import type { Task } from '@/lib/ops-types';
-import type { ConversationMemberInfo, ConversationSummary } from '@/lib/types';
+import type { ConversationMemberInfo, ConversationSummary, DirectoryUser, Me } from '@/lib/types';
 
 type Tab = 'details' | 'tasks' | 'erp' | 'files' | 'members';
 
@@ -25,10 +25,12 @@ export default function ContextDrawer({
   conversation,
   onClose,
   onOpenTask,
+  me,
 }: {
   conversation: ConversationSummary;
   onClose: () => void;
   onOpenTask?: (taskId: string) => void;
+  me?: Me;
 }) {
   const [tab, setTab] = useState<Tab>('details');
 
@@ -47,6 +49,51 @@ export default function ContextDrawer({
     queryFn: () => api.get(`/conversations/${conversation.id}/files`),
     enabled: tab === 'files',
   });
+
+  const queryClient = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [pickedIds, setPickedIds] = useState<string[]>([]);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const myMember = members?.find((m) => m.userId === me?.id);
+  const canManage =
+    conversation.type !== 'DIRECT' &&
+    (myMember?.role === 'OWNER' ||
+      myMember?.role === 'ADMIN' ||
+      me?.role === 'ADMIN' ||
+      me?.role === 'SUPER_ADMIN');
+  const { data: allUsers } = useQuery<{ items: DirectoryUser[] }>({
+    queryKey: ['users-all'],
+    queryFn: () => api.get('/users?limit=100'),
+    enabled: adding,
+  });
+  const candidates = (allUsers?.items ?? []).filter(
+    (u) => !members?.some((m) => m.userId === u.id),
+  );
+
+  async function addPicked() {
+    if (pickedIds.length === 0) return;
+    setMemberBusy(true);
+    try {
+      await api.post(`/conversations/${conversation.id}/members`, { userIds: pickedIds });
+      queryClient.invalidateQueries({ queryKey: ['members', conversation.id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setPickedIds([]);
+      setAdding(false);
+    } finally {
+      setMemberBusy(false);
+    }
+  }
+
+  async function removeMember(userId: string) {
+    setMemberBusy(true);
+    try {
+      await api.del(`/conversations/${conversation.id}/members/${userId}`);
+      queryClient.invalidateQueries({ queryKey: ['members', conversation.id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    } finally {
+      setMemberBusy(false);
+    }
+  }
 
   const owner = members?.find((m) => m.role === 'OWNER');
   const tabs: { key: Tab; label: string }[] = [
@@ -161,6 +208,63 @@ export default function ContextDrawer({
           </div>
         )}
 
+        {tab === 'members' && canManage && (
+          <div className="mb-2">
+            {!adding ? (
+              <button
+                onClick={() => setAdding(true)}
+                className="w-full rounded-md border border-dashed border-line px-2 py-1.5 text-xs font-medium text-accent hover:bg-raised"
+              >
+                + Add people
+              </button>
+            ) : (
+              <div className="rounded-md border border-line p-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                  Add to this group
+                </p>
+                <div className="mt-1.5 max-h-40 space-y-0.5 overflow-y-auto">
+                  {candidates.map((u) => (
+                    <label key={u.id} className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-raised">
+                      <input
+                        type="checkbox"
+                        checked={pickedIds.includes(u.id)}
+                        onChange={(e) =>
+                          setPickedIds((ids) =>
+                            e.target.checked ? [...ids, u.id] : ids.filter((i) => i !== u.id),
+                          )
+                        }
+                        className="h-3.5 w-3.5 accent-[#E86F1E]"
+                      />
+                      <span className="truncate">{u.profile?.displayName ?? u.username}</span>
+                    </label>
+                  ))}
+                  {candidates.length === 0 && (
+                    <p className="px-1 py-1 text-[11px] text-faint">Everyone is already here.</p>
+                  )}
+                </div>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      setAdding(false);
+                      setPickedIds([]);
+                    }}
+                    className="rounded-md border border-line px-2 py-1 text-[11px]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={addPicked}
+                    disabled={memberBusy || pickedIds.length === 0}
+                    className="rounded-md bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-ink disabled:opacity-50"
+                  >
+                    Add {pickedIds.length > 0 ? pickedIds.length : ''}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === 'members' && (
           <ul className="space-y-1">
             {members?.map((m) => (
@@ -180,6 +284,19 @@ export default function ContextDrawer({
                   }`}
                   aria-hidden
                 />
+                {m.role !== 'OWNER' &&
+                  (canManage || m.userId === me?.id) &&
+                  conversation.type !== 'DIRECT' && (
+                    <button
+                      onClick={() => removeMember(m.userId)}
+                      disabled={memberBusy}
+                      title={m.userId === me?.id ? 'Leave group' : `Remove ${m.displayName}`}
+                      aria-label={m.userId === me?.id ? 'Leave group' : `Remove ${m.displayName}`}
+                      className="text-xs text-faint hover:text-danger disabled:opacity-40"
+                    >
+                      ✕
+                    </button>
+                  )}
               </li>
             ))}
           </ul>

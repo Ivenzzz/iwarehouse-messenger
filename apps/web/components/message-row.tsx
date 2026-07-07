@@ -124,7 +124,9 @@ export default function MessageRow({
               {message.replyTo.senderName}: {message.replyTo.content.slice(0, 80)}
             </p>
           )}
-          {message.metadata?.incident ? (
+          {message.metadata?.erp ? (
+            <ErpCardInline erp={message.metadata.erp} mine={mine} />
+          ) : message.metadata?.incident ? (
             <IncidentCardInline
               incident={message.metadata.incident}
               mine={mine}
@@ -402,6 +404,53 @@ function TaskCardInline({
       </p>
       <p className={`mt-1.5 text-[11px] underline ${mine ? 'text-white/80' : 'text-accent'}`}>Open task</p>
     </button>
+  );
+}
+
+const ERP_KIND_LABEL: Record<string, string> = {
+  TRANSFER: 'Stock Transfer',
+  GRN: 'Goods Receipt',
+  INVOICE: 'Invoice',
+  RMA: 'RMA',
+  PO: 'Purchase Order',
+  SO: 'Sales Order',
+  OTHER: 'ERP Record',
+};
+
+function ErpCardInline({
+  erp,
+  mine,
+}: {
+  erp: NonNullable<NonNullable<ChatMessage['metadata']>['erp']>;
+  mine: boolean;
+}) {
+  return (
+    <span
+      className={`block w-64 max-w-full rounded-md border p-2.5 text-left ${
+        mine ? 'border-white/25' : 'border-line bg-canvas'
+      }`}
+    >
+      <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide ${mine ? 'text-white/70' : 'text-faint'}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6z" />
+          <path d="M14 3v6h6M9 13h6M9 17h6" />
+        </svg>
+        {ERP_KIND_LABEL[erp.kind] ?? 'ERP Record'}
+      </span>
+      <button
+        onClick={() => navigator.clipboard?.writeText(erp.ref)}
+        title="Copy reference"
+        className={`mt-1 block font-mono text-sm font-semibold ${mine ? 'text-white' : 'text-ink'} hover:underline`}
+      >
+        {erp.ref}
+      </button>
+      {erp.note && (
+        <span className={`mt-1 block text-[11px] ${mine ? 'text-white/70' : 'text-soft'}`}>{erp.note}</span>
+      )}
+      <span className={`mt-1 block text-[10px] ${mine ? 'text-white/50' : 'text-faint'}`}>
+        Tap the number to copy · opens in ERP later
+      </span>
+    </span>
   );
 }
 

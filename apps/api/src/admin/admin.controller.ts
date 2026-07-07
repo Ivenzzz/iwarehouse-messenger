@@ -36,6 +36,11 @@ class ResetPasswordDto {
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
 
+  @Get('system')
+  system() {
+    return this.admin.systemStats();
+  }
+
   @Get('overview')
   overview() {
     return this.admin.overview();

@@ -7,6 +7,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
+import { ClamavService } from './clamav.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -49,9 +50,12 @@ function sha256File(path: string): Promise<string> {
 
 @Injectable()
 export class UploadsService {
+  private readonly logger = new Logger(UploadsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly clamav: ClamavService,
   ) {}
 
   validate(file: Express.Multer.File) {
@@ -91,10 +95,12 @@ export class UploadsService {
           sizeBytes: BigInt(file.size),
           sha256,
           status: 'COMPLETE',
-          scanStatus: 'SKIPPED', // ClamAV hook lands with the scanning worker
+          scanStatus: this.clamav.enabled ? 'PENDING' : 'SKIPPED',
           completedAt: new Date(),
         },
       });
+      // Scan out-of-band; the sender isn't blocked waiting on the AV.
+      if (this.clamav.enabled) void this.scan(upload.id, key);
       return {
         id: upload.id,
         originalName: upload.originalName,
@@ -103,6 +109,39 @@ export class UploadsService {
       };
     } finally {
       await unlink(file.path).catch(() => undefined);
+    }
+  }
+
+  private async scan(uploadId: string, storageKey: string) {
+    try {
+      const stream = await this.storage.getStream(storageKey);
+      const result = await this.clamav.scanStream(stream as any);
+      if (result.verdict === 'INFECTED') {
+        // Remove the object immediately; keep the record as evidence.
+        await this.storage.remove(storageKey).catch(() => undefined);
+        await this.prisma.upload.update({
+          where: { id: uploadId },
+          data: { scanStatus: 'INFECTED' },
+        });
+        await this.prisma.messageAttachment.updateMany({
+          where: { storageKey },
+          data: { scanStatus: 'INFECTED' },
+        });
+        this.logger.warn(`INFECTED upload ${uploadId}: ${result.signature ?? 'unknown signature'} — object deleted`);
+      } else {
+        await this.prisma.upload.update({
+          where: { id: uploadId },
+          data: { scanStatus: result.verdict === 'CLEAN' ? 'CLEAN' : 'FAILED' },
+        });
+        await this.prisma.messageAttachment.updateMany({
+          where: { storageKey },
+          data: { scanStatus: result.verdict === 'CLEAN' ? 'CLEAN' : 'FAILED' },
+        });
+      }
+    } catch {
+      await this.prisma.upload
+        .update({ where: { id: uploadId }, data: { scanStatus: 'FAILED' } })
+        .catch(() => undefined);
     }
   }
 
@@ -124,6 +163,9 @@ export class UploadsService {
       },
     });
     if (!member) throw new ForbiddenException('You do not have access to this file');
+    if (attachment.scanStatus === 'INFECTED') {
+      throw new ForbiddenException('This file was blocked by antivirus scanning.');
+    }
     return attachment;
   }
 }

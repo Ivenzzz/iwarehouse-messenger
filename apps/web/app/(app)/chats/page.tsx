@@ -7,6 +7,7 @@ import ChatView from '@/components/chat-view';
 import NewChatDialog from '@/components/new-chat-dialog';
 import ConversationRow from '@/components/conversation-row';
 import FilterTabs from '@/components/filter-tabs';
+import AnnouncementComposer from '@/components/announcement-composer';
 import NotificationsBell from '@/components/notifications-bell';
 import SearchOverlay from '@/components/search-overlay';
 import { api } from '@/lib/api';
@@ -65,6 +66,7 @@ function Chats() {
   const queryClient = useQueryClient();
   const selectedId = params.get('c');
   const [showNew, setShowNew] = useState(false);
+  const [showAnnounce, setShowAnnounce] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [filter, setFilter] = useState<ListFilter>('all');
 
@@ -121,6 +123,16 @@ function Chats() {
           >
             🔍
           </button>
+          {me && ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(me.role) && (
+            <button
+              onClick={() => setShowAnnounce(true)}
+              title="Post announcement"
+              aria-label="Post announcement"
+              className="rounded-md border border-line px-2 py-1 text-xs text-soft hover:text-ink"
+            >
+              📣
+            </button>
+          )}
           <NotificationsBell onOpenConversation={(id) => open(id)} />
           <button
             onClick={() => setShowNew(true)}
@@ -177,6 +189,13 @@ function Chats() {
             setShowSearch(false);
             open(id);
           }}
+        />
+      )}
+
+      {showAnnounce && (
+        <AnnouncementComposer
+          onClose={() => setShowAnnounce(false)}
+          onPosted={({ conversationId }) => open(conversationId)}
         />
       )}
 
