@@ -1,20 +1,25 @@
-import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
-import './globals.css';
+import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
+import Providers from "./providers";
+import "./globals.css";
 
-const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-sans' });
-const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' });
+const sans = Instrument_Sans({ subsets: ["latin"], variable: "--font-sans" });
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
-  title: 'iWarehouse Messenger',
-  description: 'One secure workspace for every iWarehouse team.',
-  manifest: '/manifest.webmanifest',
+  title: "iWarehouse Messenger",
+  description: "One secure workspace for every iWarehouse team.",
+  manifest: "/manifest.webmanifest",
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f6f4' },
-    { media: '(prefers-color-scheme: dark)', color: '#131518' },
+    { media: "(prefers-color-scheme: light)", color: "#f6f6f4" },
+    { media: "(prefers-color-scheme: dark)", color: "#131518" },
   ],
 };
 
@@ -27,13 +32,19 @@ try {
 } catch {}
 `;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={`${sans.variable} ${mono.variable} font-sans`}>{children}</body>
+      <body className={`${sans.variable} ${mono.variable} font-sans`}>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
