@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
-import { Providers } from './providers';
 import './globals.css';
 
 const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-sans' });
@@ -34,9 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={`${sans.variable} ${mono.variable} font-sans`}>
-        <Providers>{children}</Providers>
-      </body>
+      <body className={`${sans.variable} ${mono.variable} font-sans`}>{children}</body>
     </html>
   );
 }

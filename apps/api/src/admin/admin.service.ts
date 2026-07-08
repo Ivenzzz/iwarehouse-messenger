@@ -211,4 +211,59 @@ export class AdminService {
     };
   }
 
+
+  // Message audit log (compliance): admins can see every message including
+  // soft-deleted content, who deleted it, and full pre-edit history.
+  async messageLog(params: { q?: string; deletedOnly?: boolean; limit: number }) {
+    const rows = await this.prisma.message.findMany({
+      where: {
+        ...(params.deletedOnly ? { deletedAt: { not: null } } : {}),
+        ...(params.q ? { content: { contains: params.q, mode: 'insensitive' } } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(params.limit, 200),
+      include: {
+        sender: { include: { profile: true } },
+        conversation: { select: { id: true, title: true, type: true } },
+      },
+    });
+    const deleterIds = [
+      ...new Set(
+        rows
+          .map((m) => ((m.metadata as any)?.deletedById as string | undefined) ?? null)
+          .filter(Boolean) as string[],
+      ),
+    ];
+    const deleters = deleterIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: deleterIds } },
+          include: { profile: true },
+        })
+      : [];
+    const deleterName = new Map(
+      deleters.map((u) => [u.id, u.profile?.displayName ?? u.username]),
+    );
+    return rows.map((m) => {
+      const meta = (m.metadata as any) ?? {};
+      return {
+        id: m.id,
+        conversation: {
+          id: m.conversation.id,
+          title: m.conversation.title ?? 'Direct message',
+          type: m.conversation.type,
+        },
+        sender: m.sender
+          ? { id: m.sender.id, name: m.sender.profile?.displayName ?? m.sender.username }
+          : { id: null, name: 'System' },
+        content: m.content,
+        createdAt: m.createdAt,
+        editedAt: m.editedAt,
+        editHistory: Array.isArray(meta.editHistory) ? meta.editHistory : [],
+        deletedAt: m.deletedAt,
+        deletedBy: meta.deletedById ? (deleterName.get(meta.deletedById) ?? 'Unknown') : null,
+        hasAttachments: undefined,
+      };
+    });
+  }
+
 }

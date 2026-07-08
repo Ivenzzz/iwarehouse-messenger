@@ -8,21 +8,32 @@
 let ctx: AudioContext | null = null;
 let armed = false;
 
+function ensureContext() {
+  if (!ctx) {
+    try {
+      ctx = new AudioContext();
+    } catch {
+      return null;
+    }
+  }
+  return ctx;
+}
+
 export function armSoundOnFirstGesture() {
   if (armed || typeof window === 'undefined') return;
   armed = true;
+  // Try immediately — browsers allow this without a gesture once the site
+  // has earned media engagement (returning users), so sounds work from the
+  // first message after a reload.
+  ensureContext()?.resume().catch(() => undefined);
   const arm = () => {
-    try {
-      ctx = ctx ?? new AudioContext();
-      ctx.resume().catch(() => undefined);
-    } catch {
-      /* audio unsupported */
-    }
-    window.removeEventListener('pointerdown', arm);
-    window.removeEventListener('keydown', arm);
+    ensureContext()?.resume().catch(() => undefined);
   };
+  // Keep listening (not once): tabs re-suspend the context after long idle
+  // periods, and any later interaction should revive it.
   window.addEventListener('pointerdown', arm);
   window.addEventListener('keydown', arm);
+  window.addEventListener('touchstart', arm, { passive: true });
 }
 
 const KEY = 'iwm-sound-enabled';
@@ -51,30 +62,46 @@ function tone(at: number, freq: number, dur: number, gainPeak: number) {
 }
 
 function play(notes: [number, number][], gainPeak = 0.14) {
-  if (!isSoundEnabled() || !ctx || ctx.state !== 'running') return;
-  let t = ctx.currentTime + 0.01;
-  for (const [freq, dur] of notes) {
-    tone(t, freq, dur, gainPeak);
-    t += dur * 0.7;
+  if (!isSoundEnabled()) return;
+  const c = ensureContext();
+  if (!c) return;
+  const schedule = () => {
+    let t = c.currentTime + 0.01;
+    for (const [freq, dur] of notes) {
+      tone(t, freq, dur, gainPeak);
+      t += dur * 0.7;
+    }
+  };
+  if (c.state === 'running') {
+    schedule();
+  } else {
+    // Suspended (fresh load or long-idle tab): try to resume, then play.
+    // If the browser still refuses (no interaction yet), fail silently.
+    c.resume().then(schedule).catch(() => undefined);
   }
 }
 
-// Soft two-note chime for a new message elsewhere.
+// Two-note chime for a new message elsewhere — assertive, Messenger-league.
 export function playMessageChime() {
-  play([
-    [740, 0.12],
-    [988, 0.16],
-  ]);
+  play(
+    [
+      [740, 0.14],
+      [988, 0.2],
+    ],
+    0.35,
+  );
+  navigator.vibrate?.(120);
 }
 
 // Brighter three-note rise for @mentions — cuts through without being harsh.
 export function playMentionChime() {
   play(
     [
-      [784, 0.1],
-      [988, 0.1],
-      [1319, 0.2],
+      [784, 0.12],
+      [988, 0.12],
+      [1319, 0.26],
     ],
-    0.18,
+    0.5,
   );
+  navigator.vibrate?.([150, 70, 150]);
 }

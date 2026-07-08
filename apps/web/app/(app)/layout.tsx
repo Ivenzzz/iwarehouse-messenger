@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,8 +14,16 @@ import {
 import { api } from '@/lib/api';
 import type { ConversationSummary, Me } from '@/lib/types';
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
+});
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Shell>{children}</Shell>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell>{children}</Shell>
+    </QueryClientProvider>
+  );
 }
 
 const NAV = [
@@ -64,8 +72,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       if (p.kind !== 'message') return;
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       if (!p.senderId || p.senderId === me.id) return;
+      // Suppress only when this window is FOCUSED on that conversation —
+      // the person is actively reading it. A visible-but-unfocused window
+      // (working in another app, side-by-side windows) still chimes.
       const viewingIt =
-        !document.hidden &&
+        document.hasFocus() &&
         window.location.pathname.startsWith('/chats') &&
         new URLSearchParams(window.location.search).get('c') === p.conversationId;
       if (viewingIt) return;

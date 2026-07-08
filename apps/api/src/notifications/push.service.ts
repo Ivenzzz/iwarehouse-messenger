@@ -60,7 +60,14 @@ export class PushService {
   // the notification. Dead endpoints (404/410) are pruned as we meet them.
   async sendToUser(
     userId: string,
-    payload: { title: string; body?: string | null; url?: string; tag?: string },
+    payload: {
+      title: string;
+      body?: string | null;
+      url?: string;
+      tag?: string;
+      kind?: string;
+      conversationId?: string;
+    },
   ) {
     if (!this.enabled) return;
     const subs = await this.prisma.pushSubscription.findMany({ where: { userId } });

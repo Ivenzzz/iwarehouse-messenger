@@ -857,44 +857,6 @@ export default function ChatView({
                 e.target.value = '';
               }}
             />
-            {voiceRecordingAvailable() && (
-              <button
-                onClick={() => setRecording(true)}
-                aria-label="Record voice note"
-                title="Record voice note"
-                className="rounded-md border border-line px-2.5 py-2 text-soft hover:text-ink"
-              >
-                <MicGlyph />
-              </button>
-            )}
-            {dictationAvailable() && (
-              <button
-                onClick={dictation.toggle}
-                onDoubleClick={dictation.switchLang}
-                aria-label={dictation.listening ? 'Stop dictation' : 'Dictate message'}
-                title={`${dictation.listening ? 'Stop dictation' : 'Dictate (speech to text)'} — ${
-                  dictation.lang === 'fil-PH' ? 'Filipino' : 'English'
-                }. Double-tap to switch language.`}
-                className={`rounded-md border px-2.5 py-2 ${
-                  dictation.listening
-                    ? 'border-danger/50 text-danger'
-                    : 'border-line text-soft hover:text-ink'
-                }`}
-              >
-                <DictationGlyph active={dictation.listening} />
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (cameraAvailable()) setShowCamera(true);
-                else cameraInputRef.current?.click();
-              }}
-              aria-label="Take photo"
-              title="Take photo"
-              className="rounded-md border border-line px-2.5 py-2 text-soft hover:text-ink md:hidden"
-            >
-              <CameraGlyph />
-            </button>
             <div className="relative">
               <button
                 onClick={() => setShowPlusMenu((v) => !v)}
@@ -949,23 +911,73 @@ export default function ChatView({
                     }}
                   />
                   <PlusItem label="Request approval" icon="✅" soon />
-                  <PlusItem label="Attach ERP record" icon="🧾" soon />
+                  <PlusItem
+                    label="Attach ERP record"
+                    icon="🧾"
+                    onClick={() => {
+                      setShowPlusMenu(false);
+                      setErpModal(true);
+                    }}
+                  />
                   <PlusItem label="Share location" icon="📍" soon />
                 </div>
               )}
             </div>
-            <div className="relative">
-              <button
-                onClick={() => setShowEmoji((v) => !v)}
-                aria-label="Insert emoji"
-                title="Insert emoji"
-                className="rounded-md border border-line px-2.5 py-2 text-sm"
-              >
-                😊
-              </button>
+            <div className="relative min-w-0 flex-1">
+              <textarea
+                ref={textRef}
+                value={draft}
+                onChange={(e) => onDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    send();
+                  }
+                }}
+                rows={1}
+                placeholder={`Message ${conversation.title}`}
+                className="max-h-32 min-h-[38px] w-full resize-y rounded-md border border-line bg-canvas py-2 pl-3 pr-24 text-sm md:pr-20"
+              />
+              {/* Quiet tools INSIDE the box — visible, out of the way */}
+              <div className="absolute bottom-[7px] right-1.5 flex items-center">
+                <button
+                  onClick={() => {
+                    if (cameraAvailable()) setShowCamera(true);
+                    else cameraInputRef.current?.click();
+                  }}
+                  aria-label="Take photo"
+                  title="Take photo"
+                  className="rounded p-1 text-soft hover:bg-raised hover:text-ink md:hidden"
+                >
+                  <CameraGlyph />
+                </button>
+                {dictationAvailable() && (
+                  <button
+                    onClick={dictation.toggle}
+                    onDoubleClick={dictation.switchLang}
+                    aria-label={dictation.listening ? 'Stop dictation' : 'Dictate message'}
+                    title={`${dictation.listening ? 'Stop dictation' : 'Dictate (speech to text)'} — ${
+                      dictation.lang === 'fil-PH' ? 'Filipino' : 'English'
+                    }. Double-tap to switch language.`}
+                    className={`rounded p-1 hover:bg-raised ${
+                      dictation.listening ? 'text-danger' : 'text-soft hover:text-ink'
+                    }`}
+                  >
+                    <DictationGlyph active={dictation.listening} />
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowEmoji((v) => !v)}
+                  aria-label="Insert emoji"
+                  title="Insert emoji"
+                  className="rounded p-1 text-soft hover:bg-raised hover:text-ink"
+                >
+                  <SmileGlyph />
+                </button>
+              </div>
               {showEmoji && (
                 <EmojiPicker
-                  align="left"
+                  align="right"
                   onClose={() => setShowEmoji(false)}
                   onPick={(emoji) => {
                     const el = textRef.current;
@@ -976,30 +988,28 @@ export default function ChatView({
                 />
               )}
             </div>
-            <textarea
-              ref={textRef}
-              value={draft}
-              onChange={(e) => onDraftChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  send();
+            {/* One primary action: Send when there's something to send, mic otherwise */}
+            {draft.trim() || pending.length > 0 || !voiceRecordingAvailable() ? (
+              <button
+                onClick={send}
+                disabled={
+                  (!draft.trim() && !pending.some((u) => u.info)) ||
+                  pending.some((u) => !u.info && !u.error)
                 }
-              }}
-              rows={1}
-              placeholder={`Message ${conversation.title}`}
-              className="max-h-32 min-h-[38px] w-full resize-y rounded-md border border-line bg-canvas px-3 py-2 text-sm"
-            />
-            <button
-              onClick={send}
-              disabled={
-                (!draft.trim() && !pending.some((u) => u.info)) ||
-                pending.some((u) => !u.info && !u.error)
-              }
-              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-50"
-            >
-              Send
-            </button>
+                className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-ink disabled:opacity-50"
+              >
+                Send
+              </button>
+            ) : recording ? null : (
+              <button
+                onClick={() => setRecording(true)}
+                aria-label="Record voice note"
+                title="Record voice note"
+                className="rounded-md bg-accent px-3.5 py-2 text-accent-ink"
+              >
+                <MicGlyph />
+              </button>
+            )}
           </div>
           </>
         ) : (
@@ -1230,6 +1240,15 @@ function PanelGlyph() {
     </svg>
   );
 }
+function SmileGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 10h.01M15 10h.01" />
+    </svg>
+  );
+}
+
 function MicGlyph() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>

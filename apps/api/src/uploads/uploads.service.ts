@@ -9,6 +9,7 @@ import { createHash, randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
 import { ClamavService } from './clamav.service';
+import { optimizeImage } from './image-optimizer';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 
@@ -81,19 +82,26 @@ export class UploadsService {
 
   async store(userId: string, file: Express.Multer.File) {
     const mimeType = this.validate(file);
-    const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_').slice(0, 180);
+
+    // Downscale/recompress images before they ever hit storage; the hash and
+    // size we record describe what we actually store.
+    const optimized = await optimizeImage(file.path, file.size, mimeType);
+    let safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_').slice(0, 180);
+    if (optimized.mimeType === 'image/jpeg' && mimeType !== 'image/jpeg') {
+      safeName = safeName.replace(/\.(png|webp)$/i, '') + '.jpg';
+    }
     const key = `u/${randomUUID()}/${safeName}`;
 
     try {
-      const sha256 = await sha256File(file.path);
-      await this.storage.putFile(key, file.path, file.size, mimeType);
+      const sha256 = await sha256File(optimized.path);
+      await this.storage.putFile(key, optimized.path, optimized.size, optimized.mimeType);
       const upload = await this.prisma.upload.create({
         data: {
           userId,
           storageKey: key,
           originalName: file.originalname.slice(0, 255),
-          mimeType,
-          sizeBytes: BigInt(file.size),
+          mimeType: optimized.mimeType,
+          sizeBytes: BigInt(optimized.size),
           sha256,
           status: 'COMPLETE',
           scanStatus: this.clamav.enabled ? 'PENDING' : 'SKIPPED',
@@ -109,6 +117,7 @@ export class UploadsService {
         sizeBytes: Number(upload.sizeBytes),
       };
     } finally {
+      await optimized.cleanup();
       await unlink(file.path).catch(() => undefined);
     }
   }

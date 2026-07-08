@@ -11,7 +11,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
 const ACCESS_TTL = Number(process.env.JWT_ACCESS_TTL ?? 900);
-const REFRESH_TTL = Number(process.env.JWT_REFRESH_TTL ?? 2_592_000);
+// Sessions are SLIDING: every silent refresh extends expiry, so an active
+// device stays signed in indefinitely — sign-out happens only when the user
+// chooses (or an admin deactivates them). The TTL below is the idle limit:
+// how long an untouched device stays valid. Default: 1 year.
+const REFRESH_TTL = Number(process.env.JWT_REFRESH_TTL ?? 31_536_000);
 const MAX_ATTEMPTS = Number(process.env.LOGIN_MAX_ATTEMPTS ?? 5);
 const LOCKOUT_MIN = Number(process.env.LOGIN_LOCKOUT_MINUTES ?? 15);
 

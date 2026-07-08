@@ -132,6 +132,8 @@ export default function AdminPage() {
 
         {me && <UsersSection meRole={me.role} />}
 
+        {me && <MessageLogSection />}
+
         {error instanceof ApiError && (
           <p className="mb-4 text-sm text-danger">Could not load admin data: {error.message}</p>
         )}
@@ -542,5 +544,122 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-soft">{label}</span>
       <span className="mt-1 block">{children}</span>
     </label>
+  );
+}
+
+
+// ── Message audit log ────────────────────────────────────────────────────────
+
+interface LogEntry {
+  id: string;
+  conversation: { id: string; title: string; type: string };
+  sender: { id: string | null; name: string };
+  content: string;
+  createdAt: string;
+  editedAt?: string | null;
+  editHistory: { content: string; at: string }[];
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+}
+
+function MessageLogSection() {
+  const [q, setQ] = useState('');
+  const [deletedOnly, setDeletedOnly] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const { data } = useQuery<LogEntry[]>({
+    queryKey: ['admin-messages', q, deletedOnly],
+    queryFn: () =>
+      api.get(
+        `/admin/messages?limit=100${deletedOnly ? '&deletedOnly=1' : ''}${
+          q ? `&q=${encodeURIComponent(q)}` : ''
+        }`,
+      ),
+  });
+
+  return (
+    <section className="mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+            Message log
+          </h2>
+          <p className="text-[11px] text-faint">
+            Compliance record — includes deleted messages and pre-edit text. Nothing users delete
+            is ever lost from this log.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-soft">
+            <input
+              type="checkbox"
+              checked={deletedOnly}
+              onChange={(e) => setDeletedOnly(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[#E86F1E]"
+            />
+            Deleted only
+          </label>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search message text"
+            className="rounded-md border border-line bg-canvas px-2.5 py-1 text-xs"
+          />
+        </div>
+      </div>
+
+      <div className="mt-2 space-y-1">
+        {data?.map((m) => (
+          <div
+            key={m.id}
+            className={`rounded-md border px-3 py-2 text-xs ${
+              m.deletedAt ? 'border-danger/40 bg-danger/5' : 'border-line bg-surface'
+            }`}
+          >
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="font-medium">{m.sender.name}</span>
+              <span className="text-faint">in {m.conversation.title}</span>
+              <span className="text-[10px] text-faint">
+                {new Date(m.createdAt).toLocaleString()}
+              </span>
+              {m.deletedAt && (
+                <span className="rounded-full bg-danger/15 px-2 py-0.5 text-[10px] font-semibold text-danger">
+                  deleted {m.deletedBy ? `by ${m.deletedBy}` : ''} ·{' '}
+                  {new Date(m.deletedAt).toLocaleString()}
+                </span>
+              )}
+              {m.editHistory.length > 0 && (
+                <button
+                  onClick={() => setExpanded(expanded === m.id ? null : m.id)}
+                  className="rounded-full bg-raised px-2 py-0.5 text-[10px] font-semibold text-soft hover:text-ink"
+                >
+                  edited ×{m.editHistory.length} {expanded === m.id ? '▾' : '▸'}
+                </button>
+              )}
+            </div>
+            <p className={`mt-1 whitespace-pre-wrap break-words ${m.deletedAt ? 'text-soft' : ''}`}>
+              {m.content || <span className="italic text-faint">(attachment only)</span>}
+            </p>
+            {expanded === m.id && m.editHistory.length > 0 && (
+              <div className="mt-1.5 space-y-1 border-t border-line pt-1.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">
+                  Previous versions
+                </p>
+                {m.editHistory.map((h, i) => (
+                  <p key={i} className="whitespace-pre-wrap text-[11px] text-soft">
+                    <span className="text-faint">{new Date(h.at).toLocaleString()}: </span>
+                    {h.content}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+        {data && data.length === 0 && (
+          <p className="rounded-md border border-dashed border-line px-3 py-6 text-center text-xs text-faint">
+            No messages match.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

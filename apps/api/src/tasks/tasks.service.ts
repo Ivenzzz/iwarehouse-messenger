@@ -265,6 +265,15 @@ export class TasksService {
     return this.serialize(task);
   }
 
+  private async taskOrThrow(taskId: string) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: taskInclude,
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
+  }
+
   // ── rules ──────────────────────────────────────────────────────────────────
 
   private assertTransition(
@@ -354,15 +363,6 @@ export class TasksService {
         taskId: task.id,
       } as any);
     }
-  }
-
-  private async taskOrThrow(taskId: string) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId },
-      include: taskInclude,
-    });
-    if (!task) throw new NotFoundException('Task not found');
-    return task;
   }
 
   private async refreshCard(task: TaskRow) {

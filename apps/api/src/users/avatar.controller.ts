@@ -19,6 +19,7 @@ import { tmpdir } from 'os';
 import { AuthUser, CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { optimizeAvatar } from '../uploads/image-optimizer';
 import { StorageService } from '../storage/storage.service';
 
 const AVATAR_MAX = 8 * 1024 * 1024; // 8 MB is plenty for a profile photo
@@ -50,7 +51,9 @@ export class AvatarController {
     }
     const key = `avatars/${userId}/${randomUUID()}`;
     try {
-      await this.storage.putFile(key, file.path, file.size, file.mimetype);
+      const optimized = await optimizeAvatar(file.path, file.size, file.mimetype);
+      await this.storage.putFile(key, optimized.path, optimized.size, optimized.mimeType);
+      await optimized.cleanup();
       const existing = await this.prisma.userProfile.findUnique({ where: { userId } });
       await this.prisma.userProfile.update({
         where: { userId },

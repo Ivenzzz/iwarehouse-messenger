@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import {
@@ -39,6 +39,19 @@ export class AdminController {
   @Get('system')
   system() {
     return this.admin.systemStats();
+  }
+
+  @Get('messages')
+  messageLog(
+    @Query('q') q?: string,
+    @Query('deletedOnly') deletedOnly?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.admin.messageLog({
+      q,
+      deletedOnly: deletedOnly === '1',
+      limit: Number(limit ?? 100),
+    });
   }
 
   @Get('overview')

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConversationType, MemberRole, Prisma } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushService } from '../notifications/push.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 
@@ -26,6 +27,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly notifications: NotificationsService,
+    private readonly push: PushService,
   ) {}
 
   // ── listing ────────────────────────────────────────────────────────────────
@@ -188,7 +190,15 @@ export class ConversationsService {
             userId: r.userId,
             displayName: r.user.profile?.displayName ?? r.user.username,
           })),
-      metadata: m.metadata ?? null,
+      // Members see feature metadata only; audit fields (editHistory,
+      // deletedById) are admin-log material and are stripped here.
+      metadata: (() => {
+        const meta = m.metadata as Record<string, unknown> | null;
+        if (!meta) return null;
+        const { task, incident, erp, capture } = meta as any;
+        const visible = { task, incident, erp, capture };
+        return Object.values(visible).some((v) => v !== undefined) ? visible : null;
+      })(),
       isPinned: m.pins.length > 0,
       ackCount: m.readReceipts.length,
       ackedBy: m.readReceipts.map((r) => r.userId),
@@ -414,6 +424,39 @@ export class ConversationsService {
       'conversation.updated',
       { conversationId, senderId: userId, kind: 'message' },
     );
+
+    // OS-level push for every message (Messenger-style): loud, works from
+    // any tab or with the browser closed. The service worker suppresses the
+    // banner only for a window actively focused on this conversation; muted
+    // members get nothing; delivery failures never block the send.
+    {
+      const senderRow = members.find((m) => m.userId === userId);
+      const senderName =
+        senderRow?.user.profile?.displayName ?? senderRow?.user.username ?? 'iWarehouse';
+      const convTitle = member.conversation.title;
+      const title =
+        member.conversation.type === 'DIRECT' || !convTitle
+          ? senderName
+          : `${senderName} · ${convTitle}`;
+      const body =
+        (content && content.slice(0, 140)) ||
+        (attachmentIds?.length ? '📎 Sent an attachment' : 'New message');
+      const now = new Date();
+      void Promise.all(
+        members
+          .filter((m) => m.userId !== userId && (!m.mutedUntil || m.mutedUntil <= now))
+          .map((m) =>
+            this.push.sendToUser(m.userId, {
+              title,
+              body,
+              url: `/chats?c=${conversationId}`,
+              tag: `conv-${conversationId}`,
+              kind: 'message',
+              conversationId,
+            }),
+          ),
+      );
+    }
     return payload;
   }
 
@@ -452,9 +495,18 @@ export class ConversationsService {
     const trimmed = content?.trim();
     if (!trimmed) throw new BadRequestException('Message is empty');
 
+    // Audit trail: pre-edit text preserved (visible only in the admin log).
+    const meta = ((message.metadata as any) ?? {}) as Record<string, unknown>;
+    const history = Array.isArray(meta.editHistory) ? (meta.editHistory as unknown[]) : [];
+    history.push({ content: message.content, at: message.editedAt ?? message.createdAt });
+
     const updated = await this.prisma.message.update({
       where: { id: messageId },
-      data: { content: trimmed, editedAt: new Date() },
+      data: {
+        content: trimmed,
+        editedAt: new Date(),
+        metadata: { ...meta, editHistory: history } as Prisma.InputJsonValue,
+      },
       include: messageInclude,
     });
     const payload = this.serialize(updated);
@@ -476,9 +528,13 @@ export class ConversationsService {
       if (!canModerate) throw new ForbiddenException('You cannot delete this message');
     }
 
+    const delMeta = ((message.metadata as any) ?? {}) as Record<string, unknown>;
     await this.prisma.message.update({
       where: { id: messageId },
-      data: { deletedAt: new Date() },
+      data: {
+        deletedAt: new Date(),
+        metadata: { ...delMeta, deletedById: userId } as Prisma.InputJsonValue,
+      },
     });
     this.realtime.emitToConversation(message.conversationId, 'message.deleted', {
       id: messageId,
