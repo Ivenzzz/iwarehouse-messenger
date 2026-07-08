@@ -356,6 +356,15 @@ export class TasksService {
     }
   }
 
+  private async taskOrThrow(taskId: string) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: taskInclude,
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
+  }
+
   private async refreshCard(task: TaskRow) {
     if (!task.cardMessageId || !task.conversationId) return;
     await this.prisma.message

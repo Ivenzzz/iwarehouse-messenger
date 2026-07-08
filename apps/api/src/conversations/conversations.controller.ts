@@ -34,6 +34,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { AuthUser, CurrentUser } from '../auth/decorators/current-user.decorator';

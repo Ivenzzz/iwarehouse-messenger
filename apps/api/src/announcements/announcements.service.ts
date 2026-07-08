@@ -100,7 +100,7 @@ export class AnnouncementsService {
         title: scope.title,
         branchId: scope.branchId,
         departmentId: scope.departmentId,
-        createdBy: actorId,
+        createdById: actorId,
         members: { create: { userId: actorId, role: 'OWNER' } },
       },
     });
