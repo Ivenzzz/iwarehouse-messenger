@@ -93,6 +93,16 @@ export default function ChatView({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  // iOS keyboard-close scroll pin: when the composer loses focus, snap the
+  // window back to origin so the fixed shell can't be left half-scrolled.
+  useEffect(() => {
+    const el = textRef.current;
+    if (!el) return;
+    const pin = () => requestAnimationFrame(() => window.scrollTo(0, 0));
+    el.addEventListener('blur', pin);
+    return () => el.removeEventListener('blur', pin);
+  }, []);
   const [erpKind, setErpKind] = useState('TRANSFER');
   const [erpRef, setErpRef] = useState('');
   const [erpNote, setErpNote] = useState('');
@@ -399,6 +409,7 @@ export default function ChatView({
     const replySnapshot = replyTo;
     setPending([]);
     setDraft('');
+    requestAnimationFrame(() => textRef.current?.focus());
     setReplyTo(null);
     setMentionQuery(null);
     getSocket().emit('typing.stop', { conversationId: conversation.id });
@@ -430,6 +441,19 @@ export default function ChatView({
         capture: captureMeta ?? undefined,
       });
       setCaptureMeta(null);
+      // iOS: keep the keyboard/composer exactly where they are after a send;
+      // without this WebKit can leave the page scrolled with the composer
+      // hidden under the browser chrome.
+      requestAnimationFrame(() => {
+        window.scrollTo(0, 0);
+        textRef.current?.focus();
+      });
+      // Keep the keyboard open and the composer visible after sending —
+      // mobile browsers otherwise scroll it out from under the keys.
+      requestAnimationFrame(() => {
+        textRef.current?.focus();
+        textRef.current?.scrollIntoView({ block: 'nearest' });
+      });
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== tempId);
         return withoutTemp.some((m) => m.id === saved.id) ? withoutTemp : [...withoutTemp, saved];
@@ -673,7 +697,7 @@ export default function ChatView({
       )}
 
       <div
-        className={`relative min-h-0 flex-1 overflow-y-auto ${
+        className={`relative min-h-0 flex-1 overflow-y-auto overscroll-contain ${
           dragOver ? 'ring-2 ring-inset ring-accent' : ''
         }`}
         onDragOver={(e) => {
@@ -748,7 +772,7 @@ export default function ChatView({
         </div>
       </div>
 
-      <footer className="relative border-t border-line bg-surface">
+      <footer className="pb-safe relative border-t border-line bg-surface">
         <div className="mx-auto w-full max-w-[820px] p-3">
         {replyTo && (
           <div className="mb-2 flex items-center gap-2 rounded-md border border-line bg-canvas px-3 py-1.5">

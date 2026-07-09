@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,8 +14,16 @@ import {
 import { api } from '@/lib/api';
 import type { ConversationSummary, Me } from '@/lib/types';
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
+});
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Shell>{children}</Shell>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell>{children}</Shell>
+    </QueryClientProvider>
+  );
 }
 
 const NAV = [
@@ -105,7 +113,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-x-hidden [height:100dvh]">
       {/* Nav rail (desktop) */}
       <nav
         className={`hidden flex-col border-r border-line bg-surface py-4 md:flex ${
@@ -186,7 +194,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="min-h-0 flex-1">{children}</div>
 
         {/* Bottom navigation (mobile) */}
-        <nav className="flex border-t border-line bg-surface md:hidden">
+        <nav className="pb-safe flex border-t border-line bg-surface md:hidden">
           {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => {
             const active = pathname.startsWith(n.href);
             return (

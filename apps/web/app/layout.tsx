@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
-import QueryProvider from '@/components/query-provider';
 import './globals.css';
 
 const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-sans' });
@@ -10,13 +9,15 @@ export const metadata: Metadata = {
   title: 'iWarehouse Messenger',
   description: 'One secure workspace for every iWarehouse team.',
   manifest: '/manifest.webmanifest',
-  icons: {
-    icon: '/icons/icon-192.png',
-    apple: '/icons/icon-192.png',
-  },
 };
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  // The on-screen keyboard RESIZES the app instead of covering it, so the
+  // composer always stays visible above the keys while chatting.
+  interactiveWidget: 'resizes-content',
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#f6f6f4' },
     { media: '(prefers-color-scheme: dark)', color: '#131518' },
@@ -38,9 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={`${sans.variable} ${mono.variable} font-sans`}>
-        <QueryProvider>{children}</QueryProvider>
-      </body>
+      <body className={`${sans.variable} ${mono.variable} font-sans`}>{children}</body>
     </html>
   );
 }

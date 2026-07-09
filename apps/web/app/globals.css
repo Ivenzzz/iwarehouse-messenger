@@ -70,3 +70,38 @@ body {
   -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
   mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
 }
+
+
+/* ── Mobile hardening (iPhone audit) ────────────────────────────────────────
+   iOS zooms the whole page when focusing any input smaller than 16px — the
+   number-one cause of "the layout broke" reports on iPhones. Keep desktop
+   type scale; promote form controls to 16px on coarse pointers only. */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Respect the iPhone home-indicator / notch areas. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* iOS: no rubber-band pulling of the app shell itself. */
+html,
+body {
+  overscroll-behavior-y: none;
+}
+
+
+/* The app is a fixed shell: only inner panes scroll. Locking the document
+   prevents iOS from scrolling the page when the keyboard opens/closes —
+   the cause of the composer vanishing after sending. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
