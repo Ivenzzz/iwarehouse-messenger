@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,8 +14,16 @@ import {
 import { api } from '@/lib/api';
 import type { ConversationSummary, Me } from '@/lib/types';
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
+});
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Shell>{children}</Shell>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell>{children}</Shell>
+    </QueryClientProvider>
+  );
 }
 
 const NAV = [

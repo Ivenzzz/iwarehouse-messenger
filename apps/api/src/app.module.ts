@@ -18,6 +18,7 @@ import { StorageModule } from './storage/storage.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { PollsModule } from './polls/polls.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
     IncidentsModule,
     MaintenanceModule,
     AnnouncementsModule,
+    PollsModule,
     UploadsModule,
     AuditModule,
     AuthModule,

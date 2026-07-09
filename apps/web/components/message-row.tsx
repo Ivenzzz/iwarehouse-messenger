@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { api } from '@/lib/api';
 import Avatar from '@/components/avatar';
 import AttachmentList from '@/components/attachment-list';
 import type { ChatMessage } from '@/lib/types';
@@ -124,7 +125,13 @@ export default function MessageRow({
               {message.replyTo.senderName}: {message.replyTo.content.slice(0, 80)}
             </p>
           )}
-          {message.metadata?.erp ? (
+          {message.metadata?.poll ? (
+            <PollCardInline
+              poll={message.metadata.poll}
+              meId={meId}
+              mine={mine}
+            />
+          ) : message.metadata?.erp ? (
             <ErpCardInline erp={message.metadata.erp} mine={mine} />
           ) : message.metadata?.incident ? (
             <IncidentCardInline
@@ -404,6 +411,97 @@ function TaskCardInline({
       </p>
       <p className={`mt-1.5 text-[11px] underline ${mine ? 'text-white/80' : 'text-accent'}`}>Open task</p>
     </button>
+  );
+}
+
+function PollCardInline({
+  poll,
+  meId,
+  mine,
+}: {
+  poll: NonNullable<NonNullable<ChatMessage['metadata']>['poll']>;
+  meId: string;
+  mine: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const myPicks = new Set(
+    poll.options.filter((o) => o.voters.some((v) => v.id === meId)).map((o) => o.id),
+  );
+  const max = Math.max(1, ...poll.options.map((o) => o.voters.length));
+
+  async function pick(optionId: string) {
+    if (poll.closed || busy) return;
+    setBusy(true);
+    try {
+      const next = poll.multi
+        ? myPicks.has(optionId)
+          ? [...myPicks].filter((id) => id !== optionId)
+          : [...myPicks, optionId]
+        : myPicks.has(optionId)
+          ? []
+          : [optionId];
+      await api.post(`/polls/${poll.id}/vote`, { optionIds: next });
+      // card refreshes via the conversation.refresh socket event
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className={`block w-72 max-w-full rounded-md border p-2.5 ${mine ? 'border-white/25' : 'border-line bg-canvas'}`}>
+      <span className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide ${mine ? 'text-white/70' : 'text-faint'}`}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+          <path d="M5 20V10M12 20V4M19 20v-7" />
+        </svg>
+        Poll{poll.multi ? ' · multiple choice' : ''} · {poll.totalVoters} voted
+      </span>
+      <span className={`mt-1 block text-sm font-medium leading-snug ${mine ? 'text-white' : ''}`}>
+        {poll.question}
+      </span>
+      <span className="mt-2 block space-y-1.5">
+        {poll.options.map((o) => {
+          const picked = myPicks.has(o.id);
+          const pct = (o.voters.length / max) * 100;
+          return (
+            <button
+              key={o.id}
+              onClick={() => pick(o.id)}
+              disabled={busy || poll.closed}
+              className={`relative block w-full overflow-hidden rounded-md border px-2.5 py-1.5 text-left text-xs ${
+                picked
+                  ? 'border-accent'
+                  : mine
+                    ? 'border-white/25'
+                    : 'border-line'
+              } ${busy ? 'opacity-60' : ''}`}
+            >
+              <span
+                className="absolute inset-y-0 left-0 bg-accent/15"
+                style={{ width: `${pct}%` }}
+                aria-hidden
+              />
+              <span className={`relative flex items-center justify-between gap-2 ${mine ? 'text-white' : ''}`}>
+                <span className="min-w-0 truncate">
+                  {picked ? '✓ ' : ''}
+                  {o.text}
+                </span>
+                <span className={`shrink-0 font-mono ${mine ? 'text-white/70' : 'text-faint'}`}>
+                  {o.voters.length}
+                </span>
+              </span>
+              {o.voters.length > 0 && (
+                <span className={`relative mt-0.5 block truncate text-[10px] ${mine ? 'text-white/60' : 'text-faint'}`}>
+                  {o.voters.map((v) => v.name).join(', ')}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </span>
+      <span className={`mt-1.5 block text-[10px] ${mine ? 'text-white/50' : 'text-faint'}`}>
+        Tap an option to vote{poll.multi ? '' : ' · tap again to unvote'}
+      </span>
+    </span>
   );
 }
 

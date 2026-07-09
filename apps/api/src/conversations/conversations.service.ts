@@ -195,8 +195,8 @@ export class ConversationsService {
       metadata: (() => {
         const meta = m.metadata as Record<string, unknown> | null;
         if (!meta) return null;
-        const { task, incident, erp, capture } = meta as any;
-        const visible = { task, incident, erp, capture };
+        const { task, incident, erp, capture, poll } = meta as any;
+        const visible = { task, incident, erp, capture, poll };
         return Object.values(visible).some((v) => v !== undefined) ? visible : null;
       })(),
       isPinned: m.pins.length > 0,

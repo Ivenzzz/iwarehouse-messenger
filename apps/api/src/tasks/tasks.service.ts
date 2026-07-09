@@ -199,6 +199,15 @@ export class TasksService {
 
   // ── update ─────────────────────────────────────────────────────────────────
 
+  private async taskOrThrow(taskId: string) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      include: taskInclude,
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
+  }
+
   async update(
     actor: { id: string; role: string },
     taskId: string,
@@ -263,15 +272,6 @@ export class TasksService {
     await this.refreshCard(task);
     this.emitTaskEvent(task);
     return this.serialize(task);
-  }
-
-  private async taskOrThrow(taskId: string) {
-    const task = await this.prisma.task.findUnique({
-      where: { id: taskId },
-      include: taskInclude,
-    });
-    if (!task) throw new NotFoundException('Task not found');
-    return task;
   }
 
   // ── rules ──────────────────────────────────────────────────────────────────

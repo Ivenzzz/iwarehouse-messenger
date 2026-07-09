@@ -49,6 +49,7 @@ export function VoiceRecorderBar({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const startRef = useRef(0);
+  const sendOnStopRef = useRef(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
@@ -77,6 +78,13 @@ export function VoiceRecorderBar({
           stream?.getTracks().forEach((t) => t.stop());
           if (durationMs < 700) {
             onCancel(); // too short to be a message
+            return;
+          }
+          if (sendOnStopRef.current) {
+            // Messenger-style: Send tapped while recording → send immediately.
+            const ext = type.includes('mp4') ? 'm4a' : 'webm';
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            onSend(new File([blob], `voice-${stamp}.${ext}`, { type }), durationMs);
             return;
           }
           setPreview({ blob, url: URL.createObjectURL(blob), durationMs });
@@ -152,14 +160,32 @@ export function VoiceRecorderBar({
       <span className="flex-1 text-sm">
         Recording… <span className="font-mono text-xs text-soft">{fmt(elapsed)}</span>
       </span>
-      <button onClick={onCancel} className="rounded-md border border-line px-3 py-1.5 text-xs">
-        Cancel
+      <button
+        onClick={onCancel}
+        aria-label="Cancel recording"
+        title="Cancel"
+        className="rounded-md border border-line px-3 py-1.5 text-xs"
+      >
+        ✕
       </button>
       <button
         onClick={() => recorderRef.current?.stop()}
-        className="rounded-md bg-danger px-4 py-1.5 text-xs font-semibold text-white"
+        aria-label="Stop and review"
+        title="Stop and review before sending"
+        className="rounded-md border border-danger/50 px-3 py-1.5 text-xs font-semibold text-danger"
       >
-        Stop
+        ■
+      </button>
+      <button
+        onClick={() => {
+          sendOnStopRef.current = true;
+          recorderRef.current?.stop();
+        }}
+        aria-label="Send voice note now"
+        title="Send now"
+        className="rounded-md bg-accent px-4 py-1.5 text-xs font-semibold text-accent-ink"
+      >
+        Send ➤
       </button>
     </div>
   );

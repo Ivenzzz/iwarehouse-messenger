@@ -66,6 +66,14 @@ export interface ChatMessage {
     };
     capture?: { capturedAt: string; lat?: number; lng?: number; accuracyM?: number };
     erp?: { kind: string; ref: string; note?: string };
+    poll?: {
+      id: string;
+      question: string;
+      multi: boolean;
+      closed: boolean;
+      totalVoters: number;
+      options: { id: string; text: string; voters: { id: string; name: string }[] }[];
+    };
     incident?: {
       id: string;
       type: string;

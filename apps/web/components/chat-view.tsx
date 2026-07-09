@@ -80,6 +80,11 @@ export default function ChatView({
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [incidentModal, setIncidentModal] = useState(false);
   const [erpModal, setErpModal] = useState(false);
+  const [pollModal, setPollModal] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState(['', '']);
+  const [pollMulti, setPollMulti] = useState(false);
+  const [pollBusy, setPollBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const dictation = useDictation((text) => {
     onDraftChange((draftRef.current ? draftRef.current.replace(/\s*$/, ' ') : '') + text);
@@ -910,6 +915,17 @@ export default function ChatView({
                       setIncidentModal(true);
                     }}
                   />
+                  <PlusItem
+                    label="Create poll"
+                    icon="📊"
+                    onClick={() => {
+                      setShowPlusMenu(false);
+                      setPollQuestion('');
+                      setPollOptions(['', '']);
+                      setPollMulti(false);
+                      setPollModal(true);
+                    }}
+                  />
                   <PlusItem label="Request approval" icon="✅" soon />
                   <PlusItem
                     label="Attach ERP record"
@@ -1052,6 +1068,107 @@ export default function ChatView({
 
       {openTaskId && (
         <TaskDrawer taskId={openTaskId} me={me} onClose={() => setOpenTaskId(null)} />
+      )}
+
+      {pollModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setPollModal(false)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-lg border border-line bg-surface"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between border-b border-line px-4 py-3">
+              <h2 className="text-sm font-semibold">📊 Create poll</h2>
+              <button onClick={() => setPollModal(false)} aria-label="Close" className="text-soft hover:text-ink">✕</button>
+            </header>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <label className="block">
+                <span className="text-xs font-medium text-soft">Question</span>
+                <input
+                  autoFocus
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="e.g. Which branch can absorb 5 units of IP15-128?"
+                  className="mt-1 w-full rounded-md border border-line bg-canvas px-3 py-2 text-sm"
+                />
+              </label>
+              <div>
+                <span className="text-xs font-medium text-soft">Options</span>
+                <div className="mt-1 space-y-1.5">
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <input
+                        value={opt}
+                        onChange={(e) =>
+                          setPollOptions((os) => os.map((o, j) => (j === i ? e.target.value : o)))
+                        }
+                        placeholder={`Option ${i + 1}`}
+                        className="w-full rounded-md border border-line bg-canvas px-3 py-1.5 text-sm"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button
+                          onClick={() => setPollOptions((os) => os.filter((_, j) => j !== i))}
+                          aria-label="Remove option"
+                          className="text-faint hover:text-danger"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {pollOptions.length < 10 && (
+                  <button
+                    onClick={() => setPollOptions((os) => [...os, ''])}
+                    className="mt-1.5 text-xs text-accent underline"
+                  >
+                    + Add option
+                  </button>
+                )}
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={pollMulti}
+                  onChange={(e) => setPollMulti(e.target.checked)}
+                  className="h-4 w-4 accent-[#E86F1E]"
+                />
+                Allow choosing multiple options
+              </label>
+            </div>
+            <footer className="flex justify-end gap-2 border-t border-line px-4 py-3">
+              <button onClick={() => setPollModal(false)} className="rounded-md border border-line px-3 py-1.5 text-sm">
+                Cancel
+              </button>
+              <button
+                disabled={
+                  pollBusy ||
+                  pollQuestion.trim().length < 3 ||
+                  pollOptions.filter((o) => o.trim()).length < 2
+                }
+                onClick={async () => {
+                  setPollBusy(true);
+                  try {
+                    await api.post(`/conversations/${conversation.id}/polls`, {
+                      question: pollQuestion.trim(),
+                      options: pollOptions.map((o) => o.trim()).filter(Boolean),
+                      multi: pollMulti,
+                    });
+                    queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+                    setPollModal(false);
+                  } finally {
+                    setPollBusy(false);
+                  }
+                }}
+                className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-accent-ink disabled:opacity-50"
+              >
+                {pollBusy ? 'Creating…' : 'Create poll'}
+              </button>
+            </footer>
+          </div>
+        </div>
       )}
 
       {erpModal && (

@@ -593,3 +593,49 @@ model PushSubscription {
   @@index([userId])
   @@map("push_subscriptions")
 }
+
+// ── Polls ─────────────────────────────────────────────────────────────────────
+
+model Poll {
+  id             String    @id @default(uuid()) @db.Uuid
+  conversationId String    @db.Uuid
+  messageId      String?   @db.Uuid
+  question       String
+  multi          Boolean   @default(false)
+  createdBy      String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  closedAt       DateTime?
+
+  options PollOption[]
+  votes   PollVote[]
+
+  @@index([conversationId])
+  @@map("polls")
+}
+
+model PollOption {
+  id     String @id @default(uuid()) @db.Uuid
+  pollId String @db.Uuid
+  text   String
+  ord    Int
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId, ord])
+  @@map("poll_options")
+}
+
+model PollVote {
+  pollId    String   @db.Uuid
+  optionId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@id([pollId, userId, optionId])
+  @@index([pollId])
+  @@map("poll_votes")
+}
