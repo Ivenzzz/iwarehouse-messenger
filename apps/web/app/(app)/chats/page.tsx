@@ -23,6 +23,14 @@ type ListFilter =
   | 'announcements'
   | 'pinned';
 
+interface ConversationUpdatedEvent {
+  conversationId: string;
+  senderId?: string;
+  kind?: string;
+  updatedAt?: string;
+  lastMessage?: ConversationSummary['lastMessage'];
+}
+
 const FILTERS: { key: ListFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'unread', label: 'Unread' },
@@ -76,17 +84,39 @@ function Chats() {
     queryFn: () => api.get('/conversations'),
   });
 
-  // Live sidebar: refresh list on any conversation activity or presence change.
+  // Live sidebar: apply message activity immediately, then refetch to reconcile
+  // derived fields such as unread mentions and task counts.
   useEffect(() => {
     const socket = getSocket();
-    const refresh = () => queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    const refresh = (event?: ConversationUpdatedEvent) => {
+      if (event?.kind === 'message' && event.updatedAt && event.lastMessage) {
+        queryClient.setQueryData<ConversationSummary[]>(['conversations'], (current) =>
+          current?.map((conversation) =>
+            conversation.id === event.conversationId
+              ? {
+                  ...conversation,
+                  updatedAt: event.updatedAt!,
+                  lastMessage: event.lastMessage!,
+                  unreadCount:
+                    event.senderId === me?.id || event.conversationId === selectedId
+                      ? 0
+                      : conversation.unreadCount + 1,
+                }
+              : conversation,
+          ),
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    };
+    const refreshPresence = () =>
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
     socket.on('conversation.updated', refresh);
-    socket.on('presence.update', refresh);
+    socket.on('presence.update', refreshPresence);
     return () => {
       socket.off('conversation.updated', refresh);
-      socket.off('presence.update', refresh);
+      socket.off('presence.update', refreshPresence);
     };
-  }, [queryClient]);
+  }, [me?.id, queryClient, selectedId]);
 
   const selected = useMemo(
     () => conversations?.find((c) => c.id === selectedId) ?? null,

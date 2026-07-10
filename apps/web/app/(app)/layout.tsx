@@ -253,11 +253,14 @@ function ChevronIcon({ flip }: { flip: boolean }) {
   );
 }
 function ThemeToggle() {
-  const [dark, setDark] = useState(
-    () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
-  );
+  // The server cannot see the class added by the pre-hydration theme script,
+  // so keep the first client render identical and sync the icon after mount.
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains('dark'));
+  }, []);
   function toggle() {
-    const next = !dark;
+    const next = !document.documentElement.classList.contains('dark');
     setDark(next);
     document.documentElement.classList.toggle('dark', next);
     localStorage.setItem('iwm-theme', next ? 'dark' : 'light');
