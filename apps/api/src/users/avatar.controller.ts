@@ -46,8 +46,7 @@ export class AvatarController {
 
   // Admins can set photos on behalf of staff (e.g. HR loading ID photos), so
   // every chat shows a face even for users who never open their profile page.
-  // Lets HR/IT roll out staff photos centrally instead of waiting for each employee.
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN')
   @Post('admin/users/:id/avatar')
   @UseInterceptors(
     FileInterceptor('file', {

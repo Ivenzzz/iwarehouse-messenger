@@ -4,12 +4,15 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import Providers from '../providers';
 
 export default function LoginPage() {
   return (
-    <Suspense>
-      <LoginForm />
-    </Suspense>
+    <Providers>
+      <Suspense>
+        <LoginForm />
+      </Suspense>
+    </Providers>
   );
 }
 

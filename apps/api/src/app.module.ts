@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { join } from 'path';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
@@ -27,10 +26,7 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     ScheduleModule.forRoot(),
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: join(__dirname, '..', '.env'),
-    }),
+    ConfigModule.forRoot({ isGlobal: true }),
     // Global baseline: 100 requests / 60s per IP. Login has a stricter local limit.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,

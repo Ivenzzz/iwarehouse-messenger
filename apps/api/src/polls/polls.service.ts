@@ -123,23 +123,20 @@ export class PollsService {
       },
     });
     if (!poll) return null;
-    // PollVote has no direct `user` relation, so resolve voter display names
-    // in a single follow-up query keyed by userId.
     const voterIds = [...new Set(poll.votes.map((v) => v.userId))];
-    const voters = await this.prisma.user.findMany({
-      where: { id: { in: voterIds } },
-      select: { id: true, username: true, profile: { select: { displayName: true } } },
-    });
-    const nameById = new Map(
+    const voters = voterIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: voterIds } },
+          include: { profile: true },
+        })
+      : [];
+    const nameOf = new Map(
       voters.map((u) => [u.id, u.profile?.displayName ?? u.username]),
     );
     const byOption = new Map<string, { id: string; name: string }[]>();
     for (const v of poll.votes) {
       const list = byOption.get(v.optionId) ?? [];
-      list.push({
-        id: v.userId,
-        name: nameById.get(v.userId) ?? v.userId,
-      });
+      list.push({ id: v.userId, name: nameOf.get(v.userId) ?? 'Unknown' });
       byOption.set(v.optionId, list);
     }
     return {

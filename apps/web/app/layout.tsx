@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, Instrument_Sans } from 'next/font/google';
 import './globals.css';
-import Providers from './providers';
 
 const sans = Instrument_Sans({ subsets: ['latin'], variable: '--font-sans' });
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-mono' });
@@ -28,6 +27,10 @@ export const viewport: Viewport = {
 // Applies the saved theme before first paint to avoid a flash.
 const themeInit = `
 try {
+  var flavor = localStorage.getItem('iwm-flavor');
+  if (flavor === 'apple') document.documentElement.setAttribute('data-flavor', 'apple');
+} catch (e) {}
+try {
   const t = localStorage.getItem('iwm-theme');
   const dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
   if (dark) document.documentElement.classList.add('dark');
@@ -40,9 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className={`${sans.variable} ${mono.variable} font-sans`}>
-        <Providers>{children}</Providers>
-      </body>
+      <body className={`${sans.variable} ${mono.variable} font-sans`}>{children}</body>
     </html>
   );
 }

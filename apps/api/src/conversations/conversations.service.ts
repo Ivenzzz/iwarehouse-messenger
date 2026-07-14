@@ -402,7 +402,7 @@ export class ConversationsService {
         data: { status: 'ATTACHED' },
       });
     }
-    const updatedConversation = await this.prisma.conversation.update({
+    await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { updatedAt: new Date() },
     });
@@ -422,17 +422,7 @@ export class ConversationsService {
     this.realtime.emitToUsers(
       members.map((m) => m.userId),
       'conversation.updated',
-      {
-        conversationId,
-        senderId: userId,
-        kind: 'message',
-        updatedAt: updatedConversation.updatedAt,
-        lastMessage: {
-          content: payload.content,
-          senderName: payload.sender?.displayName ?? 'System',
-          createdAt: payload.createdAt,
-        },
-      },
+      { conversationId, senderId: userId, kind: 'message' },
     );
 
     // OS-level push for every message (Messenger-style): loud, works from

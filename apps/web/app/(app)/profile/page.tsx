@@ -18,11 +18,13 @@ export default function ProfilePage() {
   const [title, setTitle] = useState('');
   const [saved, setSaved] = useState(false);
   const [sound, setSound] = useState(true);
+  const [flavor, setFlavor] = useState<'iwarehouse' | 'apple'>('iwarehouse');
   const [push, setPush] = useState<PushState>('unsupported');
   const [pushBusy, setPushBusy] = useState(false);
 
   useEffect(() => {
     setSound(isSoundEnabled());
+    if (window.localStorage.getItem('iwm-flavor') === 'apple') setFlavor('apple');
     getPushState().then(setPush).catch(() => setPush('unsupported'));
   }, []);
 
@@ -174,6 +176,41 @@ export default function ProfilePage() {
             className="h-4 w-4 accent-[#E86F1E]"
           />
         </label>
+      </div>
+
+      <div className="mt-4 border-t border-line pt-4">
+        <span className="block text-sm font-medium">Appearance</span>
+        <span className="block text-xs text-faint">
+          Skin only — same features, same layout, per device
+        </span>
+        <div className="mt-2 flex gap-1.5">
+          {(
+            [
+              ['iwarehouse', 'iWarehouse', '#E86F1E'],
+              ['apple', 'Apple', '#0A84FF'],
+            ] as const
+          ).map(([key, label, dot]) => (
+            <button
+              key={key}
+              onClick={() => {
+                setFlavor(key);
+                if (key === 'apple') {
+                  window.localStorage.setItem('iwm-flavor', 'apple');
+                  document.documentElement.setAttribute('data-flavor', 'apple');
+                } else {
+                  window.localStorage.removeItem('iwm-flavor');
+                  document.documentElement.removeAttribute('data-flavor');
+                }
+              }}
+              className={`flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                flavor === key ? 'border-accent text-ink' : 'border-line text-soft hover:text-ink'
+              }`}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: dot }} aria-hidden />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {push !== 'unsupported' && push !== 'server-off' && (

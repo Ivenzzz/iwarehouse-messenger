@@ -57,13 +57,13 @@ export class AuthController {
 
   // Which sign-in methods the login page should offer.
   @Public()
-  @Get('auth/providers')
+  @Get('providers')
   providers() {
     return { password: true, google: this.google.enabled };
   }
 
   @Public()
-  @Get('auth/google')
+  @Get('google')
   googleStart(@Res() res: Response) {
     if (!this.google.enabled) {
       res.redirect('/login?error=google_not_configured');
@@ -81,7 +81,7 @@ export class AuthController {
   }
 
   @Public()
-  @Get('auth/google/callback')
+  @Get('google/callback')
   async googleCallback(@Req() req: Request, @Res() res: Response) {
     try {
       const { code, state } = req.query as { code?: string; state?: string };

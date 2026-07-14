@@ -20,7 +20,7 @@ import {
   useDictation,
   voiceRecordingAvailable,
 } from '@/components/voice-recorder';
-import { getSocket, joinConversation, leaveConversation } from '@/lib/socket';
+import { getSocket } from '@/lib/socket';
 import type {
   ChatMessage,
   ConversationMemberInfo,
@@ -174,8 +174,18 @@ export default function ChatView({
 
   useEffect(() => {
     const socket = getSocket();
-    joinConversation(conversation.id);
+    socket.emit('conversation.join', { conversationId: conversation.id });
     api.post(`/conversations/${conversation.id}/read`).catch(() => undefined);
+
+    // Sockets die silently on phones (iOS freezes background tabs). On every
+    // reconnect the server-side room membership is gone — re-join AND
+    // refetch to backfill anything that arrived while disconnected.
+    const onReconnect = () => {
+      socket.emit('conversation.join', { conversationId: conversation.id });
+      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    };
+    socket.on('connect', onReconnect);
 
     const inThis = (p: { conversationId: string }) => p.conversationId === conversation.id;
 
@@ -310,17 +320,12 @@ export default function ChatView({
     socket.on('conversation.refresh', onRefresh);
     socket.on('task.updated', onTaskUpdated);
     socket.on('incident.updated', onIncidentUpdated);
-    // On reconnect the room is restored for future messages, but anything sent
-    // during the outage was missed — refetch this thread to fill the gap.
-    const onReconnect = () =>
-      queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
-    socket.io.on('reconnect', onReconnect);
     return () => {
-      socket.io.off('reconnect', onReconnect);
       socket.off('conversation.refresh', onRefresh);
       socket.off('task.updated', onTaskUpdated);
       socket.off('incident.updated', onIncidentUpdated);
-      leaveConversation(conversation.id);
+      socket.emit('conversation.leave', { conversationId: conversation.id });
+      socket.off('connect', onReconnect);
       socket.off('message.new', onNew);
       socket.off('message.updated', onUpdated);
       socket.off('message.deleted', onDeleted);
@@ -438,28 +443,6 @@ export default function ChatView({
       pending: true,
     };
     setMessages((prev) => [...prev, optimistic]);
-    const previousConversation = queryClient
-      .getQueryData<ConversationSummary[]>(['conversations'])
-      ?.find((item) => item.id === conversation.id);
-    const updateSidebarPreview = (message: ChatMessage) => {
-      queryClient.setQueryData<ConversationSummary[]>(['conversations'], (current) =>
-        current?.map((item) =>
-          item.id === conversation.id
-            ? {
-                ...item,
-                updatedAt: message.createdAt,
-                unreadCount: 0,
-                lastMessage: {
-                  content: message.content,
-                  senderName: message.sender?.displayName ?? 'System',
-                  createdAt: message.createdAt,
-                },
-              }
-            : item,
-        ),
-      );
-    };
-    updateSidebarPreview(optimistic);
 
     try {
       const saved: ChatMessage = await api.post(`/conversations/${conversation.id}/messages`, {
@@ -486,18 +469,10 @@ export default function ChatView({
         const withoutTemp = prev.filter((m) => m.id !== tempId);
         return withoutTemp.some((m) => m.id === saved.id) ? withoutTemp : [...withoutTemp, saved];
       });
-      updateSidebarPreview(saved);
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     } catch {
       setMessages((prev) =>
         prev.map((m) => (m.id === tempId ? { ...m, pending: false, failed: true } : m)),
-      );
-      queryClient.setQueryData<ConversationSummary[]>(['conversations'], (current) =>
-        current?.map((item) =>
-          item.id === conversation.id && item.updatedAt === optimistic.createdAt
-            ? (previousConversation ?? item)
-            : item,
-        ),
       );
     }
   }

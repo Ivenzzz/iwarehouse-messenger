@@ -16,6 +16,9 @@
   --accent-ink: 255 255 255;
   --ok: 34 152 91;
   --danger: 205 60 50;
+  --bubble-mine: 43 46 51;
+  --bubble-mine-ink: 240 240 238;
+  --r-bubble: 0.375rem;
 }
 
 .dark {
@@ -30,6 +33,51 @@
   --accent-ink: 24 26 29;
   --ok: 62 178 116;
   --danger: 226 92 82;
+  --bubble-mine: 43 46 51;
+  --bubble-mine-ink: 240 240 238;
+}
+
+/* ── Apple flavor ─────────────────────────────────────────────────────────────
+   iOS system palette, SF typography, iMessage bubbles. Toggled per device in
+   Profile; identical layout, different skin. */
+[data-flavor='apple'] {
+  --canvas: 242 242 247;   /* systemGroupedBackground */
+  --surface: 255 255 255;
+  --raised: 242 242 247;
+  --line: 209 209 214;     /* separator */
+  --ink: 17 17 19;
+  --soft: 99 99 102;       /* secondaryLabel */
+  --faint: 142 142 147;    /* tertiaryLabel */
+  --accent: 0 122 255;     /* systemBlue */
+  --accent-ink: 255 255 255;
+  --ok: 52 199 89;         /* systemGreen */
+  --danger: 255 59 48;     /* systemRed */
+  --bubble-mine: 0 122 255;
+  --bubble-mine-ink: 255 255 255;
+  --r-bubble: 1.125rem;
+}
+[data-flavor='apple'].dark,
+[data-flavor='apple'] .dark,
+.dark[data-flavor='apple'] {
+  --canvas: 0 0 0;
+  --surface: 28 28 30;     /* secondarySystemBackground */
+  --raised: 44 44 46;
+  --line: 56 56 58;
+  --ink: 242 242 247;
+  --soft: 174 174 178;
+  --faint: 118 118 122;
+  --accent: 10 132 255;
+  --accent-ink: 255 255 255;
+  --ok: 48 209 88;
+  --danger: 255 69 58;
+  --bubble-mine: 10 132 255;
+  --bubble-mine-ink: 255 255 255;
+}
+[data-flavor='apple'] body,
+body[data-flavor-body='apple'] {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display',
+    'Helvetica Neue', var(--font-sans), sans-serif;
 }
 
 html, body { height: 100%; }

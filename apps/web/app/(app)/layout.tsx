@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -14,8 +14,16 @@ import {
 import { api } from '@/lib/api';
 import type { ConversationSummary, Me } from '@/lib/types';
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { staleTime: 15_000, retry: 1 } },
+});
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return <Shell>{children}</Shell>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Shell>{children}</Shell>
+    </QueryClientProvider>
+  );
 }
 
 const NAV = [
@@ -253,14 +261,11 @@ function ChevronIcon({ flip }: { flip: boolean }) {
   );
 }
 function ThemeToggle() {
-  // The server cannot see the class added by the pre-hydration theme script,
-  // so keep the first client render identical and sync the icon after mount.
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'));
-  }, []);
+  const [dark, setDark] = useState(
+    () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
+  );
   function toggle() {
-    const next = !document.documentElement.classList.contains('dark');
+    const next = !dark;
     setDark(next);
     document.documentElement.classList.toggle('dark', next);
     localStorage.setItem('iwm-theme', next ? 'dark' : 'light');

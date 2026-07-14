@@ -112,11 +112,11 @@ export default function MessageRow({
         )}
 
         <div
-          className={`mt-0.5 inline-block rounded-md px-3 py-2 text-left text-sm leading-relaxed ${
+          className={`mt-0.5 inline-block rounded-[var(--r-bubble)] px-3 py-2 text-left text-sm leading-relaxed ${
             message.deletedAt
               ? 'border border-line italic text-faint'
               : mine
-                ? 'bg-[rgb(43,46,51)] text-[rgb(240,240,238)]'
+                ? 'bg-[rgb(var(--bubble-mine))] text-[rgb(var(--bubble-mine-ink))]'
                 : 'border border-line bg-surface'
           } ${message.pending ? 'opacity-60' : ''}`}
         >
